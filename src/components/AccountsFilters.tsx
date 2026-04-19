@@ -28,6 +28,7 @@ export function AccountsFilters() {
   const currentStage = params.get("stage");
   const needsReview = params.get("needs_review") === "1";
   const hasFollowup = params.get("has_followup") === "1";
+  const touched = params.get("touched") === "1";
   const currentQ = params.get("q") ?? "";
 
   const [q, setQ] = useState(currentQ);
@@ -114,6 +115,14 @@ export function AccountsFilters() {
           active={hasFollowup}
         >
           Has follow-up
+        </Chip>
+        <Chip
+          href={buildHref(pathname, params, {
+            touched: touched ? null : "1",
+          })}
+          active={touched}
+        >
+          Touched this week
         </Chip>
       </ChipRow>
     </div>

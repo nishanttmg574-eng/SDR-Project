@@ -6,11 +6,34 @@ import { STAGES, TIERS, type Stage, type Tier } from "./config";
 import {
   createAccount,
   deleteAccount,
+  getAccount,
   importAccounts,
   updateAccount,
 } from "./accounts";
+import { db } from "./db";
+import {
+  clearFollowup,
+  setFollowup,
+  snoozeFollowup,
+} from "./followups";
 import type { ParsedRow } from "./import";
+import {
+  createInteraction,
+  deleteInteraction,
+} from "./interactions";
+import {
+  createProspect,
+  deleteProspect,
+  updateProspect,
+} from "./prospects";
 import { saveSettings } from "./settings";
+import {
+  CHANNELS,
+  OUTCOMES,
+  type NewInteractionInput,
+  type NewProspectInput,
+  type ProspectPatch,
+} from "./types";
 
 function str(value: FormDataEntryValue | null): string {
   return typeof value === "string" ? value : "";
@@ -94,4 +117,103 @@ export async function saveSettingsAction(formData: FormData): Promise<void> {
   });
   revalidatePath("/", "layout");
   redirect("/");
+}
+
+function revalidateAccount(id: string): void {
+  revalidatePath("/");
+  revalidatePath(`/accounts/${id}`);
+}
+
+function validateInteraction(input: NewInteractionInput): NewInteractionInput {
+  if (!input.date || !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
+    throw new Error("Date is required (YYYY-MM-DD)");
+  }
+  if (input.channel && !CHANNELS.includes(input.channel)) {
+    throw new Error(`Invalid channel: ${input.channel}`);
+  }
+  if (input.outcome && !OUTCOMES.includes(input.outcome)) {
+    throw new Error(`Invalid outcome: ${input.outcome}`);
+  }
+  return input;
+}
+
+export async function createInteractionAction(
+  accountId: string,
+  input: NewInteractionInput
+): Promise<void> {
+  const clean = validateInteraction(input);
+
+  const run = db.transaction(() => {
+    const account = getAccount(accountId);
+    if (!account) throw new Error("Account not found");
+
+    let nextStage: Stage | undefined;
+    if (clean.outcome === "meeting") nextStage = "meeting";
+    else if (clean.outcome === "dead") nextStage = "dead";
+    else if (account.stage === "new" && clean.outcome) nextStage = "working";
+
+    if (nextStage && nextStage !== account.stage) {
+      updateAccount(accountId, { stage: nextStage });
+    }
+    createInteraction(accountId, clean);
+  });
+  run();
+  revalidateAccount(accountId);
+}
+
+export async function deleteInteractionAction(
+  accountId: string,
+  interactionId: string
+): Promise<void> {
+  deleteInteraction(interactionId);
+  revalidateAccount(accountId);
+}
+
+export async function createProspectAction(
+  accountId: string,
+  input: NewProspectInput
+): Promise<void> {
+  createProspect(accountId, input);
+  revalidateAccount(accountId);
+}
+
+export async function updateProspectAction(
+  accountId: string,
+  prospectId: string,
+  patch: ProspectPatch
+): Promise<void> {
+  updateProspect(prospectId, patch);
+  revalidateAccount(accountId);
+}
+
+export async function deleteProspectAction(
+  accountId: string,
+  prospectId: string
+): Promise<void> {
+  deleteProspect(prospectId);
+  revalidateAccount(accountId);
+}
+
+export async function setFollowupAction(
+  accountId: string,
+  patch: { date: string; reason: string }
+): Promise<void> {
+  if (!patch.date || !/^\d{4}-\d{2}-\d{2}$/.test(patch.date)) {
+    throw new Error("Date is required (YYYY-MM-DD)");
+  }
+  setFollowup(accountId, patch);
+  revalidateAccount(accountId);
+}
+
+export async function clearFollowupAction(accountId: string): Promise<void> {
+  clearFollowup(accountId);
+  revalidateAccount(accountId);
+}
+
+export async function snoozeFollowupAction(
+  accountId: string,
+  days: number
+): Promise<void> {
+  snoozeFollowup(accountId, days);
+  revalidateAccount(accountId);
 }

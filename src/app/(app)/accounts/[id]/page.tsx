@@ -1,20 +1,49 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAccount } from "@/lib/accounts";
-import { AccountDetailForm } from "@/components/AccountDetailForm";
+import { listInteractions } from "@/lib/interactions";
+import { listProspects } from "@/lib/prospects";
+import { AccountTabs, type Tab } from "@/components/account/AccountTabs";
+import { DetailsPanel } from "@/components/account/DetailsPanel";
+import { InteractionsPanel } from "@/components/account/InteractionsPanel";
+import { ProspectsPanel } from "@/components/account/ProspectsPanel";
+import { FollowupPanel } from "@/components/account/FollowupPanel";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
+
+type SP = { [key: string]: string | string[] | undefined };
+
+const VALID_TABS = ["details", "interactions", "prospects", "followup"] as const;
+
+function first(v: string | string[] | undefined): string | undefined {
+  return Array.isArray(v) ? v[0] : v;
+}
+
+function pickTab(v: string | undefined): Tab {
+  return (VALID_TABS as readonly string[]).includes(v ?? "")
+    ? (v as Tab)
+    : "details";
+}
 
 export default async function AccountDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<SP>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
   const account = getAccount(id);
   if (!account) notFound();
 
+  const activeTab = pickTab(first(sp.tab));
+  const openNew = first(sp.new) === "1";
+
+  const interactions = listInteractions(account.id);
+  const prospects = listProspects(account.id);
+
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex items-baseline justify-between">
         <div>
           <Link href="/" className="text-sm text-blue-600 hover:underline">
@@ -25,56 +54,32 @@ export default async function AccountDetailPage({
         <DeleteAccountButton id={account.id} name={account.name} />
       </div>
 
-      <section className="rounded-lg border border-neutral-200 bg-white p-5">
-        <h2 className="text-sm font-medium text-neutral-800">Details</h2>
-        <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-          <Detail label="Website" value={account.website} isUrl />
-          <Detail label="Industry" value={account.industry} />
-          <Detail label="HQ location" value={account.location} />
-          <Detail label="Headcount" value={account.headcount} />
-        </dl>
-      </section>
-
-      <AccountDetailForm
-        id={account.id}
-        initialStage={account.stage}
-        initialHumanTier={account.humanTier}
-        initialNotes={account.notes}
+      <AccountTabs
+        basePath={`/accounts/${account.id}`}
+        active={activeTab}
+        counts={{
+          interactions: interactions.length,
+          prospects: prospects.length,
+          followup: !!account.followupDate,
+        }}
       />
-    </div>
-  );
-}
 
-function Detail({
-  label,
-  value,
-  isUrl,
-}: {
-  label: string;
-  value: string | null;
-  isUrl?: boolean;
-}) {
-  return (
-    <>
-      <dt className="text-neutral-500">{label}</dt>
-      <dd className="text-neutral-900">
-        {value ? (
-          isUrl ? (
-            <a
-              href={value}
-              target="_blank"
-              rel="noreferrer"
-              className="text-blue-600 hover:underline"
-            >
-              {value}
-            </a>
-          ) : (
-            value
-          )
-        ) : (
-          <span className="text-neutral-400">—</span>
-        )}
-      </dd>
-    </>
+      <div className="pt-2">
+        {activeTab === "details" ? <DetailsPanel account={account} /> : null}
+        {activeTab === "interactions" ? (
+          <InteractionsPanel
+            accountId={account.id}
+            interactions={interactions}
+            prospects={prospects}
+            openNew={openNew}
+            followupDate={account.followupDate}
+          />
+        ) : null}
+        {activeTab === "prospects" ? (
+          <ProspectsPanel accountId={account.id} prospects={prospects} />
+        ) : null}
+        {activeTab === "followup" ? <FollowupPanel account={account} /> : null}
+      </div>
+    </div>
   );
 }

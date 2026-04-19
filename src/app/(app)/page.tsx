@@ -2,6 +2,8 @@ import { listAccounts } from "@/lib/accounts";
 import { STAGES, TIERS, type Stage, type Tier } from "@/lib/config";
 import { AccountsFilters } from "@/components/AccountsFilters";
 import { AccountsTable } from "@/components/AccountsTable";
+import { StatsCards } from "@/components/dashboard/StatsCards";
+import { FollowupsSection } from "@/components/dashboard/FollowupsSection";
 
 type SP = { [key: string]: string | string[] | undefined };
 
@@ -28,10 +30,14 @@ export default async function AccountsListPage({
     tier: pickTier(first(sp.tier)),
     needsReview: first(sp.needs_review) === "1",
     hasFollowup: first(sp.has_followup) === "1",
+    touched: first(sp.touched) === "1",
   });
 
   return (
     <div className="space-y-6">
+      <StatsCards />
+      <FollowupsSection />
+
       <div>
         <h1 className="text-xl font-semibold">Accounts</h1>
         <p className="mt-1 text-sm text-neutral-500">

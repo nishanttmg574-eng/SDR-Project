@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
+import { weekStartIso } from "./stats";
 import type { ParsedRow } from "./import";
 import {
   type Account,
@@ -29,6 +30,10 @@ const LIST_SQL = `
          OR COALESCE(a.human_tier, a.ai_tier) = @tier)
     AND (@needs_review = 0 OR (a.ai_tier IS NOT NULL AND a.human_verified_at IS NULL))
     AND (@has_followup = 0 OR a.followup_date IS NOT NULL)
+    AND (@touched = 0 OR EXISTS (
+      SELECT 1 FROM interactions i
+      WHERE i.account_id = a.id AND i.date >= @week_start
+    ))
   ORDER BY a.updated_at DESC
   LIMIT 500
 `;
@@ -41,6 +46,8 @@ export function listAccounts(filters: ListFilters = {}): Account[] {
     tier: filters.tier ?? null,
     needs_review: filters.needsReview ? 1 : 0,
     has_followup: filters.hasFollowup ? 1 : 0,
+    touched: filters.touched ? 1 : 0,
+    week_start: weekStartIso(),
   };
   const rows = db.prepare(LIST_SQL).all(params) as AccountRow[];
   return rows.map(rowToAccount);
