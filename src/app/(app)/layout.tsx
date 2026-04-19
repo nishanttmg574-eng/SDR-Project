@@ -19,6 +19,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <Link href="/accounts/new" className="btn-primary">
               + New account
             </Link>
+            <Link href="/import" className="btn-secondary">
+              Import
+            </Link>
             <Link href="/settings" className="btn-secondary">
               Settings
             </Link>

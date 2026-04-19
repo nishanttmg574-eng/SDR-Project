@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DEFAULT_MODEL } from "@/lib/config";
 import { getSettings, isConfigured } from "@/lib/settings";
 import { saveSettingsAction } from "@/lib/actions";
+import { BackupRestoreSection } from "@/components/BackupRestoreSection";
 
 export default function SettingsPage() {
   const settings = getSettings();
@@ -87,6 +88,8 @@ export default function SettingsPage() {
           </button>
         </div>
       </form>
+
+      {!firstRun && <BackupRestoreSection />}
     </main>
   );
 }

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
+import type { ParsedRow } from "./import";
 import {
   type Account,
   type AccountPatch,
@@ -105,4 +106,67 @@ export function updateAccount(id: string, patch: AccountPatch): void {
 
 export function deleteAccount(id: string): void {
   db.prepare("DELETE FROM accounts WHERE id = ?").run(id);
+}
+
+const FIND_BY_NAME_SQL = `
+  SELECT id FROM accounts WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1
+`;
+
+const INSERT_SQL = `
+  INSERT INTO accounts (id, name, website, industry, location, headcount, created_at, updated_at)
+  VALUES (@id, @name, @website, @industry, @location, @headcount, @now, @now)
+`;
+
+const UPDATABLE_FIELDS = ["website", "industry", "location", "headcount"] as const;
+
+export function importAccounts(rows: ParsedRow[]): { added: number; updated: number } {
+  const findByName = db.prepare(FIND_BY_NAME_SQL);
+  const insert = db.prepare(INSERT_SQL);
+
+  const run = db.transaction((rows: ParsedRow[]) => {
+    let added = 0;
+    let updated = 0;
+
+    for (const row of rows) {
+      const name = row.name.trim();
+      if (!name) continue;
+
+      const hit = findByName.get(name) as { id: string } | undefined;
+
+      if (hit) {
+        const now = new Date().toISOString();
+        const sets: string[] = ["updated_at = @updated_at"];
+        const params: Record<string, unknown> = { id: hit.id, updated_at: now };
+        let touched = false;
+        for (const field of UPDATABLE_FIELDS) {
+          const v = row[field]?.trim();
+          if (v) {
+            sets.push(`${field} = @${field}`);
+            params[field] = v;
+            touched = true;
+          }
+        }
+        if (touched) {
+          db.prepare(`UPDATE accounts SET ${sets.join(", ")} WHERE id = @id`).run(params);
+          updated++;
+        }
+      } else {
+        const now = new Date().toISOString();
+        insert.run({
+          id: randomUUID(),
+          name,
+          website: row.website?.trim() || null,
+          industry: row.industry?.trim() || null,
+          location: row.location?.trim() || null,
+          headcount: row.headcount?.trim() || null,
+          now,
+        });
+        added++;
+      }
+    }
+
+    return { added, updated };
+  });
+
+  return run(rows);
 }

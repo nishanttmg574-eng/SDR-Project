@@ -6,8 +6,10 @@ import { STAGES, TIERS, type Stage, type Tier } from "./config";
 import {
   createAccount,
   deleteAccount,
+  importAccounts,
   updateAccount,
 } from "./accounts";
+import type { ParsedRow } from "./import";
 import { saveSettings } from "./settings";
 
 function str(value: FormDataEntryValue | null): string {
@@ -53,6 +55,33 @@ export async function deleteAccountAction(id: string): Promise<void> {
   deleteAccount(id);
   revalidatePath("/");
   redirect("/");
+}
+
+export async function importAccountsAction(
+  rows: ParsedRow[]
+): Promise<{ added: number; updated: number }> {
+  if (!Array.isArray(rows)) {
+    throw new Error("Invalid payload: expected an array of rows");
+  }
+  const clean: ParsedRow[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const name = typeof row.name === "string" ? row.name.trim() : "";
+    if (!name) continue;
+    clean.push({
+      name,
+      website: typeof row.website === "string" ? row.website : undefined,
+      industry: typeof row.industry === "string" ? row.industry : undefined,
+      location: typeof row.location === "string" ? row.location : undefined,
+      headcount: typeof row.headcount === "string" ? row.headcount : undefined,
+    });
+  }
+  if (clean.length === 0) {
+    throw new Error("No rows with a name to import");
+  }
+  const result = importAccounts(clean);
+  revalidatePath("/");
+  return result;
 }
 
 export async function saveSettingsAction(formData: FormData): Promise<void> {
