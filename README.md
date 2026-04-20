@@ -1,90 +1,60 @@
 # Account Workspace
 
-A personal CRM replacement for an SDR who manages target accounts in a spreadsheet today. Private, single-user, runs locally on your machine. Replaces the spreadsheet with structured interaction history, follow-up management, AI-assisted scoring, and AI-generated call openers.
+A local, single-user tool that replaces the target-account spreadsheet an SDR already keeps on the side, and adds structured interaction history, follow-ups, and AI scoring with evidence.
 
-The app is now fully functional: CSV/XLSX import, interactions, prospects, follow-ups, JSON backup/restore, and AI-assisted scoring.
+<!-- SCREENSHOT: dashboard overview -->
 
-## Requirements
+## What's in it
 
-- Node.js 20 or newer (`node --version`)
-- macOS / Linux (Windows should work but untested)
+**Interaction log.** Every touch is a structured row (date, channel, person, outcome, notes, next step), not a free-text blob. You get a timeline per account and filters across accounts. "Show me everyone I connected with this week who didn't book" is a filter, not a search.
 
-## Install
+**Follow-ups with reasons.** A follow-up date without context rots. Every follow-up carries a `reason` field ("they said call after Q1 earnings") plus a snooze. The dashboard surfaces overdue, today, and the next seven days so nothing quietly slips.
 
-```bash
-cp .env.example .env            # then fill in ANTHROPIC_API_KEY to enable AI scoring
-npm install
-```
+**AI scoring with evidence.** When you ask the AI to score an account, it returns a tier plus the evidence it found: funding details with a source URL, countries the company is in, hiring signals, and a confidence level. You can read the work before you trust it. If you override the tier, the override is sticky, and re-scoring will not overwrite it.
 
-The `npm install` step compiles `better-sqlite3` for your machine. If it fails, make sure Xcode Command Line Tools are installed (`xcode-select --install`).
+Call prep is also in the app and uses your own notes rather than the open web. Details in [ABOUT.md](ABOUT.md).
 
-## Run
+## What it doesn't do
 
-```bash
-npm run dev
-```
+- No team features, sharing, or multi-user mode.
+- No Salesforce, HubSpot, Gmail, or Outlook integration. No email sending, no sequencing.
+- No contact data provider. It won't find new accounts or enrich contacts for you.
+- No mobile UI. Works in a desktop browser.
+- Dedup on import is exact-name only. "Acme Inc" and "Acme Incorporated" become two rows.
+- Keyboard shortcuts are not wired up yet, even if earlier notes implied otherwise.
+- It's beta software. Expect rough edges.
 
-Open http://localhost:3000. You should see an **Account Workspace** heading and a link to `/settings` that proves routing works.
+## Who this is for
 
-Other scripts:
+- SDRs managing roughly 50 to 500 target accounts.
+- People running a shadow spreadsheet alongside a company CRM that doesn't prioritize or personalize.
+- Willing to do a one-time 20-minute setup (see the quickstart).
 
-| Command             | What it does                               |
-| ------------------- | ------------------------------------------ |
-| `npm run dev`       | Start the dev server at http://localhost:3000 |
-| `npm run build`     | Production build                           |
-| `npm run start`     | Run the production build                   |
-| `npm run typecheck` | TypeScript check, no emit                  |
-| `npm run lint`      | ESLint (Next.js defaults)                  |
+## Get started
 
-## Where your data lives
+Head to [QUICKSTART.md](QUICKSTART.md) for prerequisites and a guided first hour. If you've never cloned a repo before, the quickstart assumes that.
 
-All your data is stored **locally** in one SQLite file:
+## Why I built this
 
-```
-./data/workspace.db
-```
+The short version: the spreadsheet solves real problems the CRM doesn't, and kept pulling me back even when I tried to quit it. The long version is in [ABOUT.md](ABOUT.md).
 
-That file is created the first time the app opens a database connection. It is **not** committed to git (see `.gitignore`). Nothing ever leaves your machine unless you explicitly export it or call the Anthropic API.
+## Feedback I'd like from you
 
-You can open the DB with any SQLite tool:
+Not "what do you think." These are more useful:
 
-```bash
-sqlite3 data/workspace.db ".tables"
-# accounts  interactions  prospects  settings
-```
+- Which spreadsheet columns did this actually replace for you?
+- What made you open the spreadsheet anyway?
+- Did you book meetings off the call-prep output? Roughly how many?
+- What broke, and what felt confusing on day one?
 
-### Back up your data
+One-line answers to all four beats a long essay on one.
 
-The simplest backup is to copy the file:
+## Ground rules
 
-```bash
-cp data/workspace.db "data/workspace-$(date +%F).db"
-```
+- Don't import customer or prospect data you don't have permission to hold on your personal machine. Check with your employer if unsure.
+- Don't redistribute the app or the source code to anyone outside the beta.
+- All data is stored locally. You are responsible for the security of your machine and your backups.
 
-Once the JSON export feature lands you'll also be able to dump everything to a human-readable `.json` file from inside the app.
+## Contact
 
-## AI scoring
-
-The "Research & score" button on each account page and "Score with AI" on the accounts list call the Anthropic API (Sonnet with web search, capped at 2 searches per account) and return a structured tier + evidence + confidence. The human override is sticky — re-scoring never overwrites a tier you set manually.
-
-- Requires `ANTHROPIC_API_KEY` in `.env` (loaded from there, never stored in the DB).
-- Model is configured in Settings (defaults to the value in `src/lib/config.ts`).
-- `@anthropic-ai/sdk` is the official Anthropic SDK — used server-side only.
-
-## Stack
-
-Next.js (App Router) + TypeScript + React + Tailwind + `better-sqlite3` + `@anthropic-ai/sdk`. See `Project.md` → **Chosen stack** for reasoning.
-
-## Project structure
-
-```
-data/               # your SQLite DB lives here (gitignored)
-src/
-  app/              # Next.js App Router pages
-  lib/db.ts         # SQLite connection + schema migrations
-Project.md          # product principles and constraints — read this before building
-```
-
-## Status
-
-Sessions 1–5 done: scaffold, accounts, CSV/XLSX import, interactions / prospects / follow-ups / dashboard, AI scoring with evidence. Next: call prep.
+_[contact: to be filled in]_
