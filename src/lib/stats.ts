@@ -31,10 +31,18 @@ export function getDashboardStats(): DashboardStats {
     )
     .get({ week_start: weekStart }) as { n: number };
 
+  const needsReviewRow = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM accounts
+       WHERE ai_confidence = 'low' AND human_verified_at IS NULL`
+    )
+    .get() as { n: number };
+
   return {
     total: totalRow.n ?? 0,
     followupsDue: followupsRow.due ?? 0,
     followupsOverdue: followupsRow.overdue ?? 0,
     touchedThisWeek: touchedRow.n ?? 0,
+    needsReview: needsReviewRow.n ?? 0,
   };
 }

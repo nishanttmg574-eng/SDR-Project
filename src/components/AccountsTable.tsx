@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { STAGE_LABELS } from "@/lib/config";
 import type { Account } from "@/lib/types";
-
-function effectiveTier(a: Account): string {
-  return a.humanTier ?? a.aiTier ?? "—";
-}
+import { ConfidenceDot } from "@/components/ai/ConfidenceDot";
+import { HumanVerifiedBadge } from "@/components/ai/HumanVerifiedBadge";
 
 function industryLocation(a: Account): string {
   return [a.industry, a.location].filter(Boolean).join(" · ") || "—";
@@ -21,6 +19,26 @@ function relativeDate(iso: string): string {
   const days = Math.round(hours / 24);
   if (days < 30) return `${days}d ago`;
   return new Date(iso).toISOString().slice(0, 10);
+}
+
+function TierCell({ account }: { account: Account }) {
+  if (account.humanTier) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        <span className="font-medium">{account.humanTier}</span>
+        <HumanVerifiedBadge at={account.humanVerifiedAt} />
+      </span>
+    );
+  }
+  if (account.aiTier) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        <span>{account.aiTier}</span>
+        <ConfidenceDot confidence={account.aiConfidence} size="sm" />
+      </span>
+    );
+  }
+  return <span className="text-neutral-400">—</span>;
 }
 
 export function AccountsTable({ accounts }: { accounts: Account[] }) {
@@ -61,7 +79,9 @@ export function AccountsTable({ accounts }: { accounts: Account[] }) {
                   {a.name}
                 </Link>
               </Td>
-              <Td>{effectiveTier(a)}</Td>
+              <Td>
+                <TierCell account={a} />
+              </Td>
               <Td>{STAGE_LABELS[a.stage]}</Td>
               <Td>{industryLocation(a)}</Td>
               <Td className="text-right tabular-nums">{a.interactionCount}</Td>

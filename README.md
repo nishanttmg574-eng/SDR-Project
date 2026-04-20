@@ -2,7 +2,7 @@
 
 A personal CRM replacement for an SDR who manages target accounts in a spreadsheet today. Private, single-user, runs locally on your machine. Replaces the spreadsheet with structured interaction history, follow-up management, AI-assisted scoring, and AI-generated call openers.
 
-This repo is currently at the **skeleton** stage — the app runs and the data layer is wired up, but no business features are built yet.
+The app is now fully functional: CSV/XLSX import, interactions, prospects, follow-ups, JSON backup/restore, and AI-assisted scoring.
 
 ## Requirements
 
@@ -12,7 +12,7 @@ This repo is currently at the **skeleton** stage — the app runs and the data l
 ## Install
 
 ```bash
-cp .env.example .env            # (optional for the skeleton; required once AI features land)
+cp .env.example .env            # then fill in ANTHROPIC_API_KEY to enable AI scoring
 npm install
 ```
 
@@ -63,9 +63,17 @@ cp data/workspace.db "data/workspace-$(date +%F).db"
 
 Once the JSON export feature lands you'll also be able to dump everything to a human-readable `.json` file from inside the app.
 
+## AI scoring
+
+The "Research & score" button on each account page and "Score with AI" on the accounts list call the Anthropic API (Sonnet with web search, capped at 2 searches per account) and return a structured tier + evidence + confidence. The human override is sticky — re-scoring never overwrites a tier you set manually.
+
+- Requires `ANTHROPIC_API_KEY` in `.env` (loaded from there, never stored in the DB).
+- Model is configured in Settings (defaults to the value in `src/lib/config.ts`).
+- `@anthropic-ai/sdk` is the official Anthropic SDK — used server-side only.
+
 ## Stack
 
-Next.js (App Router) + TypeScript + React + Tailwind + `better-sqlite3`. See `Project.md` → **Chosen stack** for reasoning.
+Next.js (App Router) + TypeScript + React + Tailwind + `better-sqlite3` + `@anthropic-ai/sdk`. See `Project.md` → **Chosen stack** for reasoning.
 
 ## Project structure
 
@@ -80,4 +88,4 @@ Project.md          # product principles and constraints — read this before bu
 
 ## Status
 
-Skeleton only. No import, no account list, no AI — those land in later milestones. See `Project.md` for the full roadmap.
+Sessions 1–5 done: scaffold, accounts, CSV/XLSX import, interactions / prospects / follow-ups / dashboard, AI scoring with evidence. Next: call prep.

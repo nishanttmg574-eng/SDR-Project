@@ -1,9 +1,11 @@
 import { listAccounts } from "@/lib/accounts";
 import { STAGES, TIERS, type Stage, type Tier } from "@/lib/config";
+import { hasApiKey } from "@/lib/anthropic";
 import { AccountsFilters } from "@/components/AccountsFilters";
 import { AccountsTable } from "@/components/AccountsTable";
 import { StatsCards } from "@/components/dashboard/StatsCards";
 import { FollowupsSection } from "@/components/dashboard/FollowupsSection";
+import { AccountsHeader } from "@/components/ai/AccountsHeader";
 
 type SP = { [key: string]: string | string[] | undefined };
 
@@ -32,18 +34,14 @@ export default async function AccountsListPage({
     hasFollowup: first(sp.has_followup) === "1",
     touched: first(sp.touched) === "1",
   });
+  const apiKeyConfigured = hasApiKey();
 
   return (
     <div className="space-y-6">
       <StatsCards />
       <FollowupsSection />
 
-      <div>
-        <h1 className="text-xl font-semibold">Accounts</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          {accounts.length} {accounts.length === 1 ? "account" : "accounts"}
-        </p>
-      </div>
+      <AccountsHeader count={accounts.length} apiKeyConfigured={apiKeyConfigured} />
       <AccountsFilters />
       <AccountsTable accounts={accounts} />
     </div>

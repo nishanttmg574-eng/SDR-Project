@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   ai_reasoning        TEXT,
   ai_gaps             TEXT,  -- JSON array
   ai_proposed_at      TEXT,
+  scoring_error       TEXT,
 
   human_tier          TEXT,
   human_verified_at   TEXT,
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE INDEX IF NOT EXISTS idx_accounts_stage         ON accounts(stage);
 CREATE INDEX IF NOT EXISTS idx_accounts_followup_date ON accounts(followup_date);
 CREATE INDEX IF NOT EXISTS idx_accounts_updated_at    ON accounts(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_accounts_ai_confidence ON accounts(ai_confidence);
 
 CREATE TABLE IF NOT EXISTS interactions (
   id          TEXT PRIMARY KEY,
@@ -87,6 +89,12 @@ INSERT OR IGNORE INTO settings (id) VALUES (1);
 
 export function migrate(): void {
   db.exec(SCHEMA);
+
+  const cols = db.prepare("PRAGMA table_info(accounts)").all() as { name: string }[];
+  const names = new Set(cols.map((c) => c.name));
+  if (!names.has("scoring_error")) {
+    db.exec("ALTER TABLE accounts ADD COLUMN scoring_error TEXT");
+  }
 }
 
 migrate();

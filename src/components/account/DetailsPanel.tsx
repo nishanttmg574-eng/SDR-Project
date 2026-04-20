@@ -1,7 +1,13 @@
 import { AccountDetailForm } from "@/components/AccountDetailForm";
+import { ScoringPanel } from "@/components/ai/ScoringPanel";
+import { hasApiKey } from "@/lib/anthropic";
+import { getSettings, isConfigured } from "@/lib/settings";
 import type { Account } from "@/lib/types";
 
 export function DetailsPanel({ account }: { account: Account }) {
+  const apiKeyConfigured = hasApiKey();
+  const settingsConfigured = isConfigured(getSettings());
+
   return (
     <div className="space-y-8">
       <section className="rounded-lg border border-neutral-200 bg-white p-5">
@@ -14,10 +20,15 @@ export function DetailsPanel({ account }: { account: Account }) {
         </dl>
       </section>
 
+      <ScoringPanel
+        account={account}
+        apiKeyConfigured={apiKeyConfigured}
+        settingsConfigured={settingsConfigured}
+      />
+
       <AccountDetailForm
         id={account.id}
         initialStage={account.stage}
-        initialHumanTier={account.humanTier}
         initialNotes={account.notes}
       />
     </div>

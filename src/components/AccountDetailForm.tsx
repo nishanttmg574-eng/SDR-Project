@@ -1,27 +1,24 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { STAGES, STAGE_LABELS, TIERS, type Stage, type Tier } from "@/lib/config";
+import { STAGES, STAGE_LABELS, type Stage } from "@/lib/config";
 import { updateAccountAction } from "@/lib/actions";
 
 export function AccountDetailForm({
   id,
   initialStage,
-  initialHumanTier,
   initialNotes,
 }: {
   id: string;
   initialStage: Stage;
-  initialHumanTier: Tier | null;
   initialNotes: string;
 }) {
   const [stage, setStage] = useState<Stage>(initialStage);
-  const [humanTier, setHumanTier] = useState<Tier | null>(initialHumanTier);
   const [notes, setNotes] = useState(initialNotes);
   const [savedNotes, setSavedNotes] = useState(initialNotes);
   const [pending, startTransition] = useTransition();
 
-  function save(patch: { humanTier?: Tier | null; stage?: Stage; notes?: string }) {
+  function save(patch: { stage?: Stage; notes?: string }) {
     startTransition(async () => {
       await updateAccountAction(id, patch);
     });
@@ -32,38 +29,6 @@ export function AccountDetailForm({
       <div className="flex items-center gap-3">
         <SaveIndicator pending={pending} />
       </div>
-
-      <section>
-        <h2 className="text-sm font-medium text-neutral-800">Tier</h2>
-        <p className="mt-0.5 text-xs text-neutral-500">
-          Your verified tier. Overrides any AI-proposed tier.
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {TIERS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => {
-                setHumanTier(t);
-                save({ humanTier: t });
-              }}
-              className={`chip ${humanTier === t ? "chip-active" : ""}`}
-            >
-              Tier {t}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => {
-              setHumanTier(null);
-              save({ humanTier: null });
-            }}
-            className={`chip ${humanTier === null ? "chip-active" : ""}`}
-          >
-            Unset
-          </button>
-        </div>
-      </section>
 
       <section>
         <h2 className="text-sm font-medium text-neutral-800">Stage</h2>

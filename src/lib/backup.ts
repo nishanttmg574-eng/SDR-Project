@@ -15,6 +15,7 @@ const ACCOUNT_COLUMNS = [
   "ai_reasoning",
   "ai_gaps",
   "ai_proposed_at",
+  "scoring_error",
   "human_tier",
   "human_verified_at",
   "followup_date",

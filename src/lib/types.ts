@@ -40,6 +40,15 @@ export const OUTCOME_LABELS: Record<Outcome, string> = {
   dead: "Dead",
 };
 
+export type Confidence = "high" | "medium" | "low";
+
+export interface AiEvidence {
+  funding: { summary: string; source: string | null } | null;
+  countries: string[];
+  hiring: { summary: string; source: string | null } | null;
+  entity_match: Confidence | null;
+}
+
 export interface Account {
   id: string;
   name: string;
@@ -50,6 +59,12 @@ export interface Account {
   stage: Stage;
   notes: string;
   aiTier: Tier | null;
+  aiConfidence: Confidence | null;
+  aiEvidence: AiEvidence | null;
+  aiReasoning: string | null;
+  aiGaps: string[];
+  aiProposedAt: string | null;
+  scoringError: string | null;
   humanTier: Tier | null;
   humanVerifiedAt: string | null;
   followupDate: string | null;
@@ -69,6 +84,12 @@ export interface AccountRow {
   stage: Stage;
   notes: string;
   ai_tier: Tier | null;
+  ai_confidence: Confidence | null;
+  ai_evidence: string | null;
+  ai_reasoning: string | null;
+  ai_gaps: string | null;
+  ai_proposed_at: string | null;
+  scoring_error: string | null;
   human_tier: Tier | null;
   human_verified_at: string | null;
   followup_date: string | null;
@@ -76,6 +97,32 @@ export interface AccountRow {
   interaction_count?: number;
   created_at: string;
   updated_at: string;
+}
+
+function parseEvidence(raw: string | null): AiEvidence | null {
+  if (!raw) return null;
+  try {
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== "object") return null;
+    return {
+      funding: obj.funding ?? null,
+      countries: Array.isArray(obj.countries) ? obj.countries : [],
+      hiring: obj.hiring ?? null,
+      entity_match: obj.entity_match ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseGaps(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 export function rowToAccount(row: AccountRow): Account {
@@ -89,6 +136,12 @@ export function rowToAccount(row: AccountRow): Account {
     stage: row.stage,
     notes: row.notes,
     aiTier: row.ai_tier,
+    aiConfidence: row.ai_confidence,
+    aiEvidence: parseEvidence(row.ai_evidence),
+    aiReasoning: row.ai_reasoning,
+    aiGaps: parseGaps(row.ai_gaps),
+    aiProposedAt: row.ai_proposed_at,
+    scoringError: row.scoring_error,
     humanTier: row.human_tier,
     humanVerifiedAt: row.human_verified_at,
     followupDate: row.followup_date,
@@ -227,6 +280,7 @@ export interface DashboardStats {
   followupsDue: number;
   followupsOverdue: number;
   touchedThisWeek: number;
+  needsReview: number;
 }
 
 export interface FollowupRow {
