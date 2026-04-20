@@ -77,7 +77,7 @@ One-line answers to all four beats a long essay on one.
 
 ## Ground rules
 
-- Don't import customer or prospect data you don't have permission to hold on your personal machine. Check with your employer if unsure.
+- Don't import customer or prospect data you don't have permission to hold if on your personal machine. Check with your employer if unsure.
 - Don't redistribute the app or the source code to anyone outside the beta.
 - All data is stored locally. You are responsible for the security of your machine and your backups.
 
