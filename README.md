@@ -79,7 +79,6 @@ Next.js (App Router) + TypeScript + React + Tailwind + `better-sqlite3` + `@anth
 
 ```
 data/               # your SQLite DB lives here (gitignored)
-reference/          # v1.html — the single-file prototype, kept for reference only
 src/
   app/              # Next.js App Router pages
   lib/db.ts         # SQLite connection + schema migrations
