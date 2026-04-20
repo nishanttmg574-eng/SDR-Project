@@ -23,3 +23,6 @@ data/*.db-shm
 *.log
 .vscode/
 .idea/
+
+# private planning docs (not shipped with the repo)
+.notes/
