@@ -18,6 +18,7 @@ const ACCOUNT_SELECT_COLS = `
   a.ai_proposed_at, a.scoring_error,
   a.human_tier, a.human_verified_at,
   a.followup_date, a.followup_reason,
+  a.call_prep, a.call_prep_date,
   a.created_at, a.updated_at
 `;
 
@@ -185,6 +186,28 @@ export function writeAiScore(id: string, result: ScoringWrite): void {
       updated_at: now,
     });
   }
+}
+
+export function writeCallPrep(id: string, text: string): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE accounts
+        SET call_prep      = @call_prep,
+            call_prep_date = @now,
+            updated_at     = @now
+      WHERE id = @id`
+  ).run({ id, call_prep: text, now });
+}
+
+export function clearCallPrep(id: string): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE accounts
+        SET call_prep      = NULL,
+            call_prep_date = NULL,
+            updated_at     = @now
+      WHERE id = @id`
+  ).run({ id, now });
 }
 
 export function writeAiScoresBatch(

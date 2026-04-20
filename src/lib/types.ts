@@ -69,6 +69,8 @@ export interface Account {
   humanVerifiedAt: string | null;
   followupDate: string | null;
   followupReason: string | null;
+  callPrep: string | null;
+  callPrepDate: string | null;
   interactionCount: number;
   createdAt: string;
   updatedAt: string;
@@ -94,6 +96,8 @@ export interface AccountRow {
   human_verified_at: string | null;
   followup_date: string | null;
   followup_reason: string | null;
+  call_prep: string | null;
+  call_prep_date: string | null;
   interaction_count?: number;
   created_at: string;
   updated_at: string;
@@ -146,6 +150,8 @@ export function rowToAccount(row: AccountRow): Account {
     humanVerifiedAt: row.human_verified_at,
     followupDate: row.followup_date,
     followupReason: row.followup_reason,
+    callPrep: row.call_prep,
+    callPrepDate: row.call_prep_date,
     interactionCount: row.interaction_count ?? 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

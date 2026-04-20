@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { STAGES, TIERS, type Stage, type Tier } from "./config";
 import {
+  clearCallPrep,
   createAccount,
   deleteAccount,
   getAccount,
@@ -215,5 +216,10 @@ export async function snoozeFollowupAction(
   days: number
 ): Promise<void> {
   snoozeFollowup(accountId, days);
+  revalidateAccount(accountId);
+}
+
+export async function clearCallPrepAction(accountId: string): Promise<void> {
+  clearCallPrep(accountId);
   revalidateAccount(accountId);
 }

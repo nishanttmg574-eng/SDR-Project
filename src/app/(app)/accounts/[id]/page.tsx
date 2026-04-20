@@ -3,16 +3,18 @@ import { notFound } from "next/navigation";
 import { getAccount } from "@/lib/accounts";
 import { listInteractions } from "@/lib/interactions";
 import { listProspects } from "@/lib/prospects";
+import { hasApiKey } from "@/lib/anthropic";
 import { AccountTabs, type Tab } from "@/components/account/AccountTabs";
 import { DetailsPanel } from "@/components/account/DetailsPanel";
 import { InteractionsPanel } from "@/components/account/InteractionsPanel";
 import { ProspectsPanel } from "@/components/account/ProspectsPanel";
+import { CallPrepPanel } from "@/components/account/CallPrepPanel";
 import { FollowupPanel } from "@/components/account/FollowupPanel";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
 
 type SP = { [key: string]: string | string[] | undefined };
 
-const VALID_TABS = ["details", "interactions", "prospects", "followup"] as const;
+const VALID_TABS = ["details", "interactions", "prospects", "callprep", "followup"] as const;
 
 function first(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
@@ -60,6 +62,7 @@ export default async function AccountDetailPage({
         counts={{
           interactions: interactions.length,
           prospects: prospects.length,
+          callprep: !!account.callPrep,
           followup: !!account.followupDate,
         }}
       />
@@ -77,6 +80,9 @@ export default async function AccountDetailPage({
         ) : null}
         {activeTab === "prospects" ? (
           <ProspectsPanel accountId={account.id} prospects={prospects} />
+        ) : null}
+        {activeTab === "callprep" ? (
+          <CallPrepPanel account={account} apiKeyConfigured={hasApiKey()} />
         ) : null}
         {activeTab === "followup" ? <FollowupPanel account={account} /> : null}
       </div>

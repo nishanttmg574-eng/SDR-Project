@@ -1,11 +1,12 @@
 import Link from "next/link";
 
-type Tab = "details" | "interactions" | "prospects" | "followup";
+type Tab = "details" | "interactions" | "prospects" | "callprep" | "followup";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "details", label: "Details" },
   { id: "interactions", label: "Interactions" },
   { id: "prospects", label: "Prospects" },
+  { id: "callprep", label: "Call prep" },
   { id: "followup", label: "Follow-up" },
 ];
 
@@ -16,7 +17,12 @@ export function AccountTabs({
 }: {
   basePath: string;
   active: Tab;
-  counts: { interactions: number; prospects: number; followup: boolean };
+  counts: {
+    interactions: number;
+    prospects: number;
+    callprep: boolean;
+    followup: boolean;
+  };
 }) {
   return (
     <div className="border-b border-neutral-200">
@@ -54,10 +60,16 @@ export function AccountTabs({
 
 function badgeFor(
   tab: Tab,
-  counts: { interactions: number; prospects: number; followup: boolean }
+  counts: {
+    interactions: number;
+    prospects: number;
+    callprep: boolean;
+    followup: boolean;
+  }
 ): string | number | null {
   if (tab === "interactions") return counts.interactions > 0 ? counts.interactions : null;
   if (tab === "prospects") return counts.prospects > 0 ? counts.prospects : null;
+  if (tab === "callprep") return counts.callprep ? "•" : null;
   if (tab === "followup") return counts.followup ? "•" : null;
   return null;
 }

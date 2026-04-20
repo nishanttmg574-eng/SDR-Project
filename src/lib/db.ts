@@ -95,6 +95,9 @@ export function migrate(): void {
   if (!names.has("scoring_error")) {
     db.exec("ALTER TABLE accounts ADD COLUMN scoring_error TEXT");
   }
+  if (!names.has("call_prep_date")) {
+    db.exec("ALTER TABLE accounts ADD COLUMN call_prep_date TEXT");
+  }
 }
 
 migrate();
