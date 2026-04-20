@@ -66,7 +66,7 @@ Head to [QUICKSTART.md](QUICKSTART.md) for prerequisites and a guided first hour
 
 The short version: the spreadsheet solves real problems the CRM doesn't, and kept pulling me back even when I tried to quit it. The long version is in [ABOUT.md](ABOUT.md).
 
-## Feedback I'd like from you:
+## Feedback I'd like:
 
 - Which spreadsheet columns did this actually replace for you?
 - What made you open the spreadsheet anyway?
@@ -84,4 +84,5 @@ One-line answers to all four beats a long essay on one.
 ## Contact
 
 Nishant T.
+nishant.tmg574@gmail.com
 +61 416 168 213 (iMessage or Whatsapp)
