@@ -100,7 +100,7 @@ You'll see a few lines of log output. Leave this Terminal window open. If you cl
 http://localhost:3000
 ```
 
-You should see the dashboard.
+On a brand-new install the app takes you straight to Settings, because it won't show the dashboard until you've given it a workspace name and a Tier 1 definition. That's where the next section picks up, so this is expected — not a broken redirect.
 
 ## First-hour walkthrough
 
