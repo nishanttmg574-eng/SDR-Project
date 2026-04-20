@@ -85,4 +85,5 @@ One-line answers to all four beats a long essay on one.
 
 ## Contact
 
-_[contact: to be filled in]_
+Nishant T.
++61 416 168 213 (iMessage or Whatsapp)
