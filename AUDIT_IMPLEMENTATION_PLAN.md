@@ -140,10 +140,17 @@ Make the local data model resilient enough for real spreadsheet imports and the 
 
 ### Goals
 
-Make the AI layer provider-aware, more reliable, and better aligned with the OpenAI SDR application story.
+Make the AI layer provider-aware, user-selectable, more reliable, and better aligned with the OpenAI SDR application story.
 
 ### Work Items
 
+- Make AI choice a user-facing setting:
+  - Add a clear provider selector in Settings with supported options such as OpenAI and Anthropic.
+  - Show only models that belong to the selected provider, with a sensible default for each provider.
+  - Allow advanced users to enter a custom model ID when needed.
+  - Show provider-specific API key status and setup guidance without exposing full keys.
+  - Disable scoring and call prep when the selected provider is missing its required API key.
+  - Persist the user's selected provider and model locally with the rest of the workspace settings.
 - Add an AI provider abstraction:
   - Define a common interface for scoring, call prep, provider configuration, and API key detection.
   - Keep the existing Anthropic path behind the interface.
@@ -187,6 +194,8 @@ Make the AI layer provider-aware, more reliable, and better aligned with the Ope
 
 ### Acceptance Criteria
 
+- Users can choose their AI provider and model from Settings before running scoring or call prep.
+- Provider-specific API key readiness is visible before the user starts an AI action.
 - The app can be configured to use OpenAI without rewriting scoring and call-prep call sites.
 - Scoring responses are schema-validated before being written.
 - Cancelling bulk scoring aborts active requests instead of waiting up to the full timeout.
@@ -219,6 +228,7 @@ Make the app feel polished in a demo, easier to use repeatedly, and clearer as a
   - Explain what improves call prep output: notes, prospects, recent interactions, and scored evidence.
 - Update docs and screenshots narrative:
   - Fix README drift around "AI model selector" if the UI remains a text input.
+  - Document that the user chooses their preferred AI provider and model in Settings.
   - Fix Quickstart wording that refers to an override dropdown when the UI uses tier chips.
   - Mark screenshots and demo data as synthetic/local.
   - Either use the source spreadsheet screenshot in the "Why this exists" story or remove the unused asset.
@@ -247,12 +257,15 @@ Make the app feel polished in a demo, easier to use repeatedly, and clearer as a
 - Restore rejects malformed backups before destructive replacement.
 - AI score writes never overwrite human tier or human verification timestamp.
 - AI schema validation rejects missing fields, bad enum values, and malformed evidence.
+- Selected provider/model settings route scoring and call prep to the correct mocked provider.
+- AI actions are disabled when the selected provider has no configured API key.
 
 ### Integration And Smoke Tests
 
 - Create account, add prospect, log interaction, set follow-up, and complete follow-up disposition.
 - Seed 2,000 accounts, then search, filter, and page through results.
 - Run single-account scoring with a mocked provider response.
+- Switch providers in settings and verify scoring/call prep use the selected provider.
 - Run bulk scoring with mocked success, transient failure, schema failure, and cancellation.
 - Restore a valid backup and verify accounts, interactions, prospects, settings, follow-ups, call prep, and custom fields.
 
@@ -280,5 +293,6 @@ Make the app feel polished in a demo, easier to use repeatedly, and clearer as a
 - The app remains local-first and single-user.
 - Team collaboration, deployment, real-time sync, Salesforce/HubSpot integration, Gmail/Outlook integration, sequencing, and mobile-native apps remain out of scope.
 - OpenAI support should be added through a provider abstraction rather than immediately deleting Anthropic support.
+- The user, not the codebase default alone, decides which supported AI provider and model the workspace uses.
 - The first implementation pass should favor correctness and demo credibility over broad feature expansion.
 - All product metrics should be derived from structured interaction and account data, not manually entered vanity counters.
