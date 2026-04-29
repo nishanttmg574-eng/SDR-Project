@@ -4,6 +4,8 @@ This guide assumes you've never used a terminal, never cloned a repo, and would 
 
 If you just want the overview of what the tool is, read [README.md](README.md) first.
 
+The screenshots and sample account data in this repo are synthetic and local.
+
 ## Prerequisites
 
 Install these before anything else. Each one is a regular installer, like any other app.
@@ -22,9 +24,9 @@ You should see something like `v20.x.x` or higher.
 git --version
 ```
 
-**An Anthropic API key.** Go to [console.anthropic.com](https://console.anthropic.com), create an account, and add a small amount of credit ($5 is plenty for a beta). Generate a key. It will start with `sk-ant-`. Copy it somewhere safe; you'll paste it in a minute.
+**An AI provider API key.** OpenAI is the default for new workspaces, and Anthropic is also supported. For OpenAI, create a key in the OpenAI dashboard. For Anthropic, go to [console.anthropic.com](https://console.anthropic.com), create an account, and add a small amount of credit ($5 is plenty for a beta). Copy the key somewhere safe; you'll paste it in a minute.
 
-AI scoring and call prep need this key. Everything else in the app (import, interactions, follow-ups, backup) works without one.
+AI scoring and call prep need the key for whichever provider you select in Settings. Everything else in the app (import, interactions, follow-ups, backup) works without one.
 
 ## Setup, step by step
 
@@ -63,12 +65,14 @@ cp .env.example .env
 **5. Open the `.env` file in any text editor** (TextEdit, VS Code, Notepad, whatever you have). It will look like this:
 
 ```
+OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 ```
 
-Paste your key after the equals sign. No quotes, no spaces. Save the file.
+Paste your preferred provider's key after the equals sign. No quotes, no spaces. Save the file. OpenAI is the default for new workspaces; existing workspaces can keep using Anthropic from Settings.
 
 ```
+OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
@@ -108,11 +112,12 @@ A guided tour. Do this once. It ends with you generating your first call prep.
 
 ### 0 to 5 minutes: Settings
 
-Click Settings. Fill in three things:
+Click Settings. Fill in four things:
 
 1. **Workspace name.** Anything. "My accounts" works.
 2. **Company description.** One or two sentences about what your company sells and to whom. This feeds the AI scoring prompt.
 3. **Tier 1 definition.** Two sentences describing what an ideal account looks like for you. Industry, size, signals, anything relevant. The AI uses this to decide which accounts are Tier 1.
+4. **AI provider and model.** Pick OpenAI or Anthropic. The model list changes with the selected provider, and advanced users can enter a custom model ID.
 
 Tier 2 through 4 definitions are optional. Fill them in later once you've scored a few accounts and seen where the AI gets things wrong.
 
@@ -127,7 +132,7 @@ Click Import. Drag in a CSV or XLSX of your current spreadsheet.
 - Review the preview. If the name column looks wrong, rename it in your source file to `name` and re-import.
 - Accept. You'll see how many rows were added and how many existing ones were updated.
 
-Deduplication is by exact name match. "Acme Inc" and "Acme Incorporated" will become two separate rows, so clean obvious duplicates in your source first if that matters.
+Import checks normalized names and domains to catch obvious duplicates. Ambiguous matches are skipped with a warning instead of silently merging into the wrong account, so clean obvious duplicates in your source first if that matters.
 
 ### 15 to 30 minutes: Score a handful
 
@@ -135,7 +140,7 @@ Open any account. Click **Research & score**. Wait about 30 seconds.
 
 You'll get back a proposed tier, a confidence level, and an evidence block: funding detail with a source URL, countries found, hiring signals. Read it. Does it look like the right company? If not (especially with generic names), the evidence will tell you which company the AI ended up researching.
 
-If the AI got it wrong, set a human tier using the override dropdown. Your override sticks, and re-scoring will never overwrite it.
+If the AI got it wrong, set a human tier using the tier chips. Your override sticks, and re-scoring will never overwrite it.
 
 Repeat on four more accounts to get a feel for it. Then try bulk scoring on a filtered slice, not all 500 at once. Start with 20 to 50 rows. If you hit rate limits, wait a minute and try a smaller batch.
 
@@ -193,7 +198,7 @@ PORT=3001 npm run dev
 
 Then open `http://localhost:3001` instead.
 
-**`ANTHROPIC_API_KEY not set` when you try to score.** The `.env` file is missing the key, has a typo, or you started the dev server before saving the key. Fix `.env`, stop the server (Ctrl+C in the Terminal window where it's running), and run `npm run dev` again.
+**`OPENAI_API_KEY not set` or `ANTHROPIC_API_KEY not set` when you try to score.** The selected provider's key is missing, has a typo, or you started the dev server before saving the key. Fix `.env`, stop the server (Ctrl+C in the Terminal window where it's running), and run `npm run dev` again.
 
 **Rate limit errors during bulk scoring.** You're pushing too many scores too fast. Cancel the bulk job. Score smaller batches (20 to 50). Wait a minute between batches.
 
@@ -212,9 +217,9 @@ Then restart the dev server (Ctrl+C in its Terminal, then `npm run dev` again).
 
 ## Backing up your data
 
-In the app, go to Settings and use **Export backup**. You'll download a JSON file containing your settings, accounts, interactions, and prospects. Do this weekly.
+In the app, go to Settings and use **Export backup**. You'll download a JSON file containing your settings, accounts, interactions, prospects, follow-ups, and generated call prep metadata. This is the normal backup path. Do this weekly.
 
-If you prefer, the raw database lives at `data/workspace.db`. Copying that file is also a valid backup.
+If you need a raw SQLite backup instead, stop the app first. SQLite runs in WAL mode, so recent writes may live alongside the main database file. Copy `data/workspace.db`, `data/workspace.db-wal`, and `data/workspace.db-shm` together when the `-wal` and `-shm` files are present.
 
 ## Uninstalling
 

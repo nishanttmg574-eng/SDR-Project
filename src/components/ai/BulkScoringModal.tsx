@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
+import type { AiReadiness } from "@/lib/ai-providers";
 import type { BulkFilter, JobState } from "@/lib/scoring-types";
 
 type StatusResponse = JobState | { status: "idle" };
@@ -19,23 +20,32 @@ const WORKERS = [2, 3, 5] as const;
 export function BulkScoringModal({
   open,
   onClose,
-  apiKeyConfigured,
+  aiReadiness,
 }: {
   open: boolean;
   onClose: () => void;
-  apiKeyConfigured: boolean;
+  aiReadiness: AiReadiness;
 }) {
   const router = useRouter();
   const [filter, setFilter] = useState<BulkFilter>("unscored");
   const [limit, setLimit] = useState<number | "all">(10);
   const [workers, setWorkers] = useState<number>(3);
+  const [includeHumanVerified, setIncludeHumanVerified] = useState(false);
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isRunning = status && "id" in status && (status.status === "running" || status.status === "cancelling");
-  const isTerminal = status && "id" in status && (status.status === "done" || status.status === "error");
+  const isRunning =
+    status &&
+    "id" in status &&
+    (status.status === "running" || status.status === "cancelling");
+  const isTerminal =
+    status &&
+    "id" in status &&
+    (status.status === "done" ||
+      status.status === "error" ||
+      status.status === "cancelled");
 
   useEffect(() => {
     if (!open) {
@@ -61,7 +71,12 @@ export function BulkScoringModal({
       const res = await fetch("/api/score/status", { cache: "no-store" });
       const data: StatusResponse = await res.json();
       setStatus(data);
-      if ("status" in data && (data.status === "done" || data.status === "error")) {
+      if (
+        "status" in data &&
+        (data.status === "done" ||
+          data.status === "error" ||
+          data.status === "cancelled")
+      ) {
         router.refresh();
       }
     } catch {
@@ -75,7 +90,7 @@ export function BulkScoringModal({
       const res = await fetch("/api/score/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filter, limit, workers }),
+        body: JSON.stringify({ filter, limit, workers, includeHumanVerified }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -101,9 +116,9 @@ export function BulkScoringModal({
 
   return (
     <Modal open={open} onClose={onClose} title="Score accounts with AI" widthClass="max-w-xl">
-      {!apiKeyConfigured && (
+      {!aiReadiness.configured && (
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          Set <code className="font-mono text-xs">ANTHROPIC_API_KEY</code> in .env first.
+          Set <code className="font-mono text-xs">{aiReadiness.envVar}</code> in .env first.
         </div>
       )}
 
@@ -116,6 +131,7 @@ export function BulkScoringModal({
                   key={f}
                   type="button"
                   onClick={() => setFilter(f)}
+                  aria-pressed={filter === f}
                   className={`chip ${filter === f ? "chip-active" : ""}`}
                 >
                   {FILTER_LABELS[f]}
@@ -131,6 +147,7 @@ export function BulkScoringModal({
                   key={String(n)}
                   type="button"
                   onClick={() => setLimit(n)}
+                  aria-pressed={limit === n}
                   className={`chip ${limit === n ? "chip-active" : ""}`}
                 >
                   {n === "all" ? "All" : n}
@@ -146,6 +163,7 @@ export function BulkScoringModal({
                   key={w}
                   type="button"
                   onClick={() => setWorkers(w)}
+                  aria-pressed={workers === w}
                   className={`chip ${workers === w ? "chip-active" : ""}`}
                 >
                   {w}
@@ -154,8 +172,28 @@ export function BulkScoringModal({
             </div>
           </Field>
 
+          <label className="flex items-start gap-2 rounded-md border border-neutral-200 p-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={includeHumanVerified}
+              onChange={(event) => setIncludeHumanVerified(event.target.checked)}
+            />
+            <span>
+              <span className="block font-medium text-neutral-800">
+                Refresh AI evidence behind verified accounts
+              </span>
+              <span className="text-xs text-neutral-500">
+                Human tier overrides stay sticky either way.
+              </span>
+            </span>
+          </label>
+
           {startError && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-800">
+            <div
+              role="alert"
+              className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-800"
+            >
               {startError}
             </div>
           )}
@@ -168,7 +206,7 @@ export function BulkScoringModal({
               type="button"
               className="btn-primary"
               onClick={start}
-              disabled={!apiKeyConfigured}
+              disabled={!aiReadiness.configured}
             >
               Start
             </button>
@@ -200,10 +238,14 @@ function ProgressView({
   onClose: () => void;
 }) {
   const pct = job.total === 0 ? 0 : Math.min(100, Math.round((job.completed / job.total) * 100));
-  const terminal = job.status === "done" || job.status === "error";
+  const terminal = job.status === "done" || job.status === "error" || job.status === "cancelled";
 
   return (
-    <div className="space-y-4">
+    <div
+      className="space-y-4"
+      aria-busy={!terminal}
+      aria-live="polite"
+    >
       <div>
         <div className="flex items-baseline justify-between">
           <div className="text-sm text-neutral-700">
@@ -211,6 +253,8 @@ function ProgressView({
               ? "Cancelling…"
               : job.status === "done"
               ? "Done"
+              : job.status === "cancelled"
+              ? "Cancelled"
               : job.status === "error"
               ? "Failed"
               : "Scoring…"}
@@ -237,8 +281,17 @@ function ProgressView({
         />
       </div>
 
+      {job.includeHumanVerified && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
+          Human-verified accounts were included for AI evidence refresh.
+        </div>
+      )}
+
       {job.errorMessage && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-800">
+        <div
+          role="alert"
+          className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-800"
+        >
           {job.errorMessage}
         </div>
       )}

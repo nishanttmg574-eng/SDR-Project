@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { hasApiKey } from "@/lib/anthropic";
+import { getAiReadiness } from "@/lib/ai-providers";
+import { getSettings } from "@/lib/settings";
 import { startJob, type BulkFilter } from "@/lib/scoring-job";
 
 export const runtime = "nodejs";
@@ -9,8 +10,10 @@ const FILTERS: BulkFilter[] = ["unscored", "all", "low-confidence"];
 const WORKERS_ALLOWED = new Set([1, 2, 3, 5]);
 
 export async function POST(req: Request) {
-  if (!hasApiKey()) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 400 });
+  const settings = getSettings();
+  const readiness = getAiReadiness(settings);
+  if (!readiness.configured) {
+    return NextResponse.json({ error: `${readiness.envVar} not set` }, { status: 400 });
   }
 
   let body: unknown;
@@ -32,8 +35,9 @@ export async function POST(req: Request) {
   if (!WORKERS_ALLOWED.has(workers)) {
     return NextResponse.json({ error: `Invalid workers: ${workers}` }, { status: 400 });
   }
+  const includeHumanVerified = b.includeHumanVerified === true;
 
-  const result = startJob({ filter, limit, workers });
+  const result = startJob({ filter, limit, workers, includeHumanVerified });
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 409 });
   }

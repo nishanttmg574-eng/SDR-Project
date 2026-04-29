@@ -35,7 +35,7 @@ export function Modal({
   return (
     <dialog
       ref={ref}
-      className={`w-full ${widthClass} rounded-lg border border-neutral-200 bg-white p-0 shadow-xl backdrop:bg-black/40`}
+      className={`max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-hidden ${widthClass} rounded-lg border border-neutral-200 bg-white p-0 shadow-xl backdrop:bg-black/40`}
       onClick={(e) => {
         if (e.target === ref.current) onClose();
       }}
@@ -51,7 +51,9 @@ export function Modal({
           ✕
         </button>
       </div>
-      <div className="px-5 py-4">{children}</div>
+      <div className="max-h-[calc(100dvh-6rem)] overflow-y-auto px-5 py-4">
+        {children}
+      </div>
     </dialog>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Papa, { type ParseError } from "papaparse";
 import {
   CANONICAL_FIELDS,
@@ -11,7 +11,11 @@ import {
   type DetectResult,
   type ParsedRow,
 } from "@/lib/import";
-import { importAccountsAction } from "@/lib/actions";
+import {
+  importAccountsAction,
+  previewImportAccountsAction,
+} from "@/lib/actions";
+import type { ImportPreviewResult, ImportWarning } from "@/lib/accounts";
 
 type Stage =
   | { kind: "idle" }
@@ -31,7 +35,13 @@ type Stage =
       detect: DetectResult;
       normalized: ParsedRow[];
     }
-  | { kind: "result"; added: number; updated: number };
+  | {
+      kind: "result";
+      added: number;
+      updated: number;
+      skipped: number;
+      warnings: ImportWarning[];
+    };
 
 function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
@@ -45,6 +55,8 @@ function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
 export function ImportClient() {
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
   const [error, setError] = useState<string | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreviewResult | null>(null);
+  const [previewPending, setPreviewPending] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [pending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -52,6 +64,8 @@ export function ImportClient() {
   const reset = useCallback(() => {
     setStage({ kind: "idle" });
     setError(null);
+    setImportPreview(null);
+    setPreviewPending(false);
     if (inputRef.current) inputRef.current.value = "";
   }, []);
 
@@ -69,6 +83,36 @@ export function ImportClient() {
       setStage({ kind: "preview", filename, sheetName, headers, rawRows, detect, normalized });
     },
     []
+  );
+
+  const parseXlsxSheet = useCallback(
+    async (buffer: ArrayBuffer, sheetName: string, filename: string) => {
+      try {
+        const XLSX = await import("xlsx");
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) {
+          setError(`Sheet "${sheetName}" not found in workbook.`);
+          setStage({ kind: "idle" });
+          return;
+        }
+        const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+          defval: "",
+          raw: true,
+        });
+        const headerRows = XLSX.utils.sheet_to_json<string[]>(sheet, {
+          header: 1,
+          defval: "",
+          raw: false,
+        });
+        const headers = (headerRows[0] ?? []).map((h) => String(h));
+        showPreview(headers, rawRows, filename, sheetName);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to parse sheet");
+        setStage({ kind: "idle" });
+      }
+    },
+    [showPreview]
   );
 
   const handleFile = useCallback(
@@ -134,37 +178,7 @@ export function ImportClient() {
         setStage({ kind: "idle" });
       }
     },
-    [showPreview]
-  );
-
-  const parseXlsxSheet = useCallback(
-    async (buffer: ArrayBuffer, sheetName: string, filename: string) => {
-      try {
-        const XLSX = await import("xlsx");
-        const workbook = XLSX.read(buffer, { type: "array" });
-        const sheet = workbook.Sheets[sheetName];
-        if (!sheet) {
-          setError(`Sheet "${sheetName}" not found in workbook.`);
-          setStage({ kind: "idle" });
-          return;
-        }
-        const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-          defval: "",
-          raw: true,
-        });
-        const headerRows = XLSX.utils.sheet_to_json<string[]>(sheet, {
-          header: 1,
-          defval: "",
-          raw: false,
-        });
-        const headers = (headerRows[0] ?? []).map((h) => String(h));
-        showPreview(headers, rawRows, filename, sheetName);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to parse sheet");
-        setStage({ kind: "idle" });
-      }
-    },
-    [showPreview]
+    [parseXlsxSheet, showPreview]
   );
 
   const onConfirm = useCallback(() => {
@@ -172,12 +186,47 @@ export function ImportClient() {
     startTransition(async () => {
       try {
         const result = await importAccountsAction(stage.normalized);
-        setStage({ kind: "result", added: result.added, updated: result.updated });
+        setStage({
+          kind: "result",
+          added: result.added,
+          updated: result.updated,
+          skipped: result.skipped,
+          warnings: result.warnings,
+        });
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Import failed");
       }
     });
+  }, [stage]);
+
+  useEffect(() => {
+    if (stage.kind !== "preview" || stage.normalized.length === 0) {
+      setImportPreview(null);
+      setPreviewPending(false);
+      return;
+    }
+
+    let cancelled = false;
+    setPreviewPending(true);
+    setImportPreview(null);
+
+    previewImportAccountsAction(stage.normalized)
+      .then((result) => {
+        if (!cancelled) setImportPreview(result);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Could not check duplicates");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewPending(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [stage]);
 
   const onDrop = useCallback(
@@ -191,7 +240,21 @@ export function ImportClient() {
   );
 
   return (
-    <div className="space-y-6">
+    <div
+      className="space-y-6"
+      aria-busy={stage.kind === "parsing" || previewPending || pending}
+    >
+      <div aria-live="polite" className="sr-only">
+        {stage.kind === "parsing"
+          ? `Parsing ${stage.filename}.`
+          : previewPending
+          ? "Checking import duplicates."
+          : pending
+          ? "Importing accounts."
+          : stage.kind === "result"
+          ? "Import complete."
+          : ""}
+      </div>
       {stage.kind !== "result" && stage.kind !== "preview" && stage.kind !== "sheet-picker" && (
         <div
           className={`rounded-lg border-2 border-dashed p-10 text-center transition-colors ${
@@ -236,7 +299,10 @@ export function ImportClient() {
       )}
 
       {error && (
-        <div className="whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+        <div
+          role="alert"
+          className="whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900"
+        >
           {error}
         </div>
       )}
@@ -257,6 +323,8 @@ export function ImportClient() {
           detect={stage.detect}
           headers={stage.headers}
           normalized={stage.normalized}
+          importPreview={importPreview}
+          previewPending={previewPending}
           pending={pending}
           onConfirm={onConfirm}
           onCancel={reset}
@@ -264,10 +332,17 @@ export function ImportClient() {
       )}
 
       {stage.kind === "result" && (
-        <div className="rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-900">
+        <div
+          aria-live="polite"
+          className="rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-900"
+        >
           <div className="font-medium">
-            Imported: {stage.added} new, {stage.updated} updated.
+            Imported: {stage.added} new, {stage.updated} updated
+            {stage.skipped ? `, ${stage.skipped} skipped` : ""}.
           </div>
+          {stage.warnings.length > 0 && (
+            <WarningList warnings={stage.warnings} className="mt-3" />
+          )}
           <div className="mt-2 flex gap-3">
             <Link href="/" className="btn-primary">
               View accounts
@@ -331,6 +406,8 @@ function PreviewPanel({
   detect,
   headers,
   normalized,
+  importPreview,
+  previewPending,
   pending,
   onConfirm,
   onCancel,
@@ -340,6 +417,8 @@ function PreviewPanel({
   detect: DetectResult;
   headers: string[];
   normalized: ParsedRow[];
+  importPreview: ImportPreviewResult | null;
+  previewPending: boolean;
   pending: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -361,7 +440,10 @@ function PreviewPanel({
       </div>
 
       {nameMissing ? (
-        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+        <div
+          role="alert"
+          className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900"
+        >
           <div className="font-medium">No name column detected</div>
           <p className="mt-1">
             Rename a column in your file to one of:{" "}
@@ -399,10 +481,18 @@ function PreviewPanel({
           </ul>
           {detect.unmatched.length > 0 && (
             <div className="mt-3 text-xs text-neutral-500">
-              Ignored columns: {detect.unmatched.join(", ")}
+              Preserved as imported fields: {detect.unmatched.join(", ")}
             </div>
           )}
         </div>
+      )}
+
+      {!nameMissing && (
+        <ImportSafetyPanel
+          preview={importPreview}
+          pending={previewPending}
+          preservedColumns={detect.unmatched}
+        />
       )}
 
       {!nameMissing && sample.length > 0 && (
@@ -437,7 +527,7 @@ function PreviewPanel({
         </div>
       )}
 
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3" aria-busy={pending}>
         <button
           type="button"
           className="btn-primary"
@@ -455,6 +545,78 @@ function PreviewPanel({
           Cancel
         </button>
       </div>
+    </div>
+  );
+}
+
+function ImportSafetyPanel({
+  preview,
+  pending,
+  preservedColumns,
+}: {
+  preview: ImportPreviewResult | null;
+  pending: boolean;
+  preservedColumns: string[];
+}) {
+  return (
+    <div className="rounded-md border border-neutral-200 bg-white p-4 text-sm">
+      <div className="font-medium text-neutral-800">Import checks</div>
+      <div className="mt-2 text-xs text-neutral-500">
+        {preservedColumns.length > 0
+          ? `${preservedColumns.length} unmapped column${
+              preservedColumns.length === 1 ? "" : "s"
+            } will be saved on each account.`
+          : "No unmapped columns to preserve."}
+      </div>
+      <div className="mt-3 text-xs text-neutral-600" aria-live="polite">
+        {pending || !preview ? (
+          "Checking existing accounts for duplicate names and domains..."
+        ) : (
+          <>
+            {preview.potentialAdds} new, {preview.potentialUpdates} matched update
+            {preview.potentialUpdates === 1 ? "" : "s"}
+            {preview.ambiguous.length > 0 ? (
+              <span>, {preview.ambiguous.length} ambiguous row
+                {preview.ambiguous.length === 1 ? "" : "s"} will be skipped.</span>
+            ) : (
+              "."
+            )}
+          </>
+        )}
+      </div>
+      {preview && preview.ambiguous.length > 0 && (
+        <WarningList warnings={preview.ambiguous} className="mt-3" />
+      )}
+    </div>
+  );
+}
+
+function WarningList({
+  warnings,
+  className = "",
+}: {
+  warnings: ImportWarning[];
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950 ${className}`}
+    >
+      <div className="font-medium">Duplicate review needed</div>
+      <ul className="mt-2 space-y-2">
+        {warnings.slice(0, 5).map((warning) => (
+          <li key={`${warning.rowNumber}-${warning.name}`}>
+            Row {warning.rowNumber}: <span className="font-medium">{warning.name}</span>{" "}
+            was skipped because it matched {warning.matches.length} existing accounts:{" "}
+            {warning.matches.map((match) => match.name).join(", ")}.
+          </li>
+        ))}
+      </ul>
+      {warnings.length > 5 && (
+        <div className="mt-2 text-amber-800">
+          Showing first 5 of {warnings.length} duplicate warnings.
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { recomputeAccountActivity, touchAccountActivity } from "./accounts";
 import { db } from "./db";
 import {
   type NewProspectInput,
@@ -47,6 +48,7 @@ export function createProspect(
     notes: input.notes?.trim() ?? "",
     created_at: now,
   });
+  touchAccountActivity(accountId, now);
   return id;
 }
 
@@ -60,6 +62,9 @@ const FIELD_MAP: Record<keyof NewProspectInput, string> = {
 };
 
 export function updateProspect(id: string, patch: ProspectPatch): void {
+  const row = db
+    .prepare("SELECT account_id FROM prospects WHERE id = ?")
+    .get(id) as { account_id: string } | undefined;
   const sets: string[] = [];
   const params: Record<string, unknown> = { id };
   for (const key of Object.keys(patch) as (keyof NewProspectInput)[]) {
@@ -81,8 +86,13 @@ export function updateProspect(id: string, patch: ProspectPatch): void {
   }
   if (sets.length === 0) return;
   db.prepare(`UPDATE prospects SET ${sets.join(", ")} WHERE id = @id`).run(params);
+  if (row) touchAccountActivity(row.account_id);
 }
 
 export function deleteProspect(id: string): void {
+  const row = db
+    .prepare("SELECT account_id FROM prospects WHERE id = ?")
+    .get(id) as { account_id: string } | undefined;
   db.prepare("DELETE FROM prospects WHERE id = ?").run(id);
+  if (row) recomputeAccountActivity(row.account_id);
 }

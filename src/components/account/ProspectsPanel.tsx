@@ -149,7 +149,7 @@ function AddProspect({ accountId }: { accountId: string }) {
         ) : null}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Name *" value={fields.name} onChange={(v) => set("name", v)} required />
         <Field label="Title" value={fields.title ?? ""} onChange={(v) => set("title", v)} />
         <Field label="Email" value={fields.email ?? ""} onChange={(v) => set("email", v)} type="email" />
@@ -158,7 +158,7 @@ function AddProspect({ accountId }: { accountId: string }) {
           label="LinkedIn URL"
           value={fields.linkedin ?? ""}
           onChange={(v) => set("linkedin", v)}
-          className="col-span-2"
+          className="sm:col-span-2"
         />
       </div>
       <label className="block text-sm">
@@ -172,7 +172,10 @@ function AddProspect({ accountId }: { accountId: string }) {
       </label>
 
       {error ? (
-        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p
+          role="alert"
+          className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
           {error}
         </p>
       ) : null}
@@ -253,7 +256,7 @@ function ProspectCard({
           onSubmit={onSave}
           className="space-y-3 rounded-lg border border-blue-300 bg-white p-4"
         >
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Name *" value={fields.name} onChange={(v) => set("name", v)} required />
             <Field label="Title" value={fields.title ?? ""} onChange={(v) => set("title", v)} />
             <Field label="Email" value={fields.email ?? ""} onChange={(v) => set("email", v)} type="email" />
@@ -262,7 +265,7 @@ function ProspectCard({
               label="LinkedIn URL"
               value={fields.linkedin ?? ""}
               onChange={(v) => set("linkedin", v)}
-              className="col-span-2"
+              className="sm:col-span-2"
             />
           </div>
           <label className="block text-sm">
@@ -275,7 +278,10 @@ function ProspectCard({
             />
           </label>
           {error ? (
-            <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p
+              role="alert"
+              className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            >
               {error}
             </p>
           ) : null}
@@ -298,7 +304,7 @@ function ProspectCard({
 
   return (
     <li className="rounded-lg border border-neutral-200 bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="font-medium text-neutral-900">{prospect.name}</div>
           {prospect.title ? (

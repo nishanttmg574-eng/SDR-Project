@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { clearCallPrepAction } from "@/lib/actions";
+import type { AiReadiness } from "@/lib/ai-providers";
 import type { Account } from "@/lib/types";
 
 function relativeDate(iso: string | null): string {
@@ -21,10 +22,12 @@ function relativeDate(iso: string | null): string {
 
 export function CallPrepPanel({
   account,
-  apiKeyConfigured,
+  aiReadiness,
+  stale,
 }: {
   account: Account;
-  apiKeyConfigured: boolean;
+  aiReadiness: AiReadiness;
+  stale: boolean;
 }) {
   const router = useRouter();
   const [generating, setGenerating] = useState(false);
@@ -78,7 +81,7 @@ export function CallPrepPanel({
   const hasCallPrep = !!account.callPrep;
 
   return (
-    <section className="max-w-2xl space-y-5">
+    <section className="max-w-2xl space-y-5" aria-busy={generating || clearing}>
       <div>
         <h2 className="text-sm font-medium text-neutral-800">Call prep</h2>
         <p className="mt-0.5 text-xs text-neutral-500">
@@ -86,10 +89,14 @@ export function CallPrepPanel({
         </p>
       </div>
 
-      {!apiKeyConfigured && (
+      <div aria-live="polite" className="sr-only">
+        {generating ? "Generating call prep." : copied ? "Call prep copied." : ""}
+      </div>
+
+      {!aiReadiness.configured && (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          Set <code className="font-mono text-xs">ANTHROPIC_API_KEY</code> in{" "}
-          <code className="font-mono text-xs">.env</code> to enable call prep.{" "}
+          Set <code className="font-mono text-xs">{aiReadiness.envVar}</code> in{" "}
+          <code className="font-mono text-xs">.env</code> to enable {aiReadiness.label} call prep.{" "}
           <Link href="/settings" className="underline">
             Settings
           </Link>
@@ -97,7 +104,10 @@ export function CallPrepPanel({
       )}
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <div
+          role="alert"
+          className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+        >
           {error}
         </div>
       )}
@@ -107,10 +117,11 @@ export function CallPrepPanel({
           <p className="text-sm text-neutral-600">
             No call prep yet for {account.name}.
           </p>
+          <QualityHint />
           <button
             type="button"
             onClick={generate}
-            disabled={generating || !apiKeyConfigured}
+            disabled={generating || !aiReadiness.configured}
             className="btn-primary mt-4"
           >
             {generating ? "Generating…" : "Generate call opener"}
@@ -119,14 +130,29 @@ export function CallPrepPanel({
       ) : (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-neutral-500">
-              Generated {relativeDate(account.callPrepDate)}
-            </p>
+            <div>
+              <p className="text-xs text-neutral-500">
+                Generated {relativeDate(account.callPrepDate)}
+              </p>
+              {account.callPrepMetadata && (
+                <p className="text-xs text-neutral-500">
+                  {account.callPrepMetadata.provider} / {account.callPrepMetadata.model}
+                </p>
+              )}
+              {stale && (
+                <div className="mt-1">
+                  <p className="inline-flex rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                    Stale - notes, prospects, interactions, evidence, or AI settings changed
+                  </p>
+                  <QualityHint className="mt-1" />
+                </div>
+              )}
+            </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={generate}
-                disabled={generating || !apiKeyConfigured}
+                disabled={generating || !aiReadiness.configured}
                 className="btn-secondary"
               >
                 {generating ? "Regenerating…" : "Regenerate"}
@@ -156,5 +182,13 @@ export function CallPrepPanel({
         </div>
       )}
     </section>
+  );
+}
+
+function QualityHint({ className = "mt-2" }: { className?: string }) {
+  return (
+    <p className={`${className} text-xs text-neutral-500`}>
+      Stronger prep comes from notes, prospects, recent interactions, and scored evidence.
+    </p>
   );
 }

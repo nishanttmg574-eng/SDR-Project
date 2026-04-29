@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { recomputeAccountActivity, touchAccountInteractionActivity } from "./accounts";
 import { db } from "./db";
+import { assertDateOnly } from "./dates";
 import {
   type Interaction,
   type InteractionRow,
@@ -28,12 +30,13 @@ export function createInteraction(
   accountId: string,
   input: NewInteractionInput
 ): string {
+  const date = assertDateOnly(input.date, "Interaction date");
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(INSERT_SQL).run({
     id,
     account_id: accountId,
-    date: input.date,
+    date,
     channel: input.channel ?? null,
     person: input.person?.trim() || null,
     outcome: input.outcome ?? null,
@@ -41,9 +44,14 @@ export function createInteraction(
     next_step: input.nextStep?.trim() || null,
     created_at: now,
   });
+  touchAccountInteractionActivity(accountId, date);
   return id;
 }
 
 export function deleteInteraction(id: string): void {
+  const row = db
+    .prepare("SELECT account_id FROM interactions WHERE id = ?")
+    .get(id) as { account_id: string } | undefined;
   db.prepare("DELETE FROM interactions WHERE id = ?").run(id);
+  if (row) recomputeAccountActivity(row.account_id);
 }

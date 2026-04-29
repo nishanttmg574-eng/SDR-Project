@@ -8,26 +8,20 @@ import {
   OUTCOME_LABELS,
   OUTCOMES,
   type Channel,
+  type InteractionDispositionInput,
+  type InteractionDispositionType,
   type Interaction,
   type NewInteractionInput,
   type Outcome,
   type Prospect,
 } from "@/lib/types";
+import { addDaysIso, isDateOnly, todayIso } from "@/lib/dates";
 import {
-  clearFollowupAction,
   createInteractionAction,
   deleteInteractionAction,
-  snoozeFollowupAction,
 } from "@/lib/actions";
+import { DateField } from "@/components/ui/DateField";
 import { Modal } from "@/components/ui/Modal";
-
-function todayIso(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
-}
 
 export function InteractionsPanel({
   accountId,
@@ -59,7 +53,7 @@ export function InteractionsPanel({
 
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-neutral-800">
           Interactions
           <span className="ml-2 text-neutral-400">({interactions.length})</span>
@@ -177,14 +171,15 @@ function InteractionRow({
   );
 }
 
-type FollowupAction = "keep" | "clear" | "snooze-3" | "snooze-7" | "snooze-30";
-
-const FOLLOWUP_CHOICES: { value: FollowupAction; label: string }[] = [
-  { value: "keep", label: "Keep" },
-  { value: "clear", label: "Clear" },
-  { value: "snooze-3", label: "Push +3d" },
-  { value: "snooze-7", label: "Push +1w" },
-  { value: "snooze-30", label: "Push +30d" },
+const DISPOSITION_CHOICES: {
+  value: InteractionDispositionType;
+  label: string;
+}[] = [
+  { value: "complete-clear", label: "Complete and clear" },
+  { value: "no-answer-retry", label: "No answer and retry" },
+  { value: "set-new-follow-up", label: "Set new follow-up" },
+  { value: "meeting-booked", label: "Meeting booked" },
+  { value: "mark-dead", label: "Mark dead" },
 ];
 
 function followupLabel(iso: string, today: string): string {
@@ -198,6 +193,24 @@ function followupLabel(iso: string, today: string): string {
     return `${iso} (${diff}d overdue)`;
   }
   return iso;
+}
+
+function dispositionNeedsFollowup(
+  disposition: InteractionDispositionType
+): boolean {
+  return (
+    disposition === "no-answer-retry" ||
+    disposition === "set-new-follow-up"
+  );
+}
+
+function forcedOutcomeForDisposition(
+  disposition: InteractionDispositionType
+): Outcome | null {
+  if (disposition === "no-answer-retry") return "no-answer";
+  if (disposition === "meeting-booked") return "meeting";
+  if (disposition === "mark-dead") return "dead";
+  return null;
 }
 
 function InteractionForm({
@@ -217,37 +230,76 @@ function InteractionForm({
   const [outcome, setOutcome] = useState<Outcome>("no-answer");
   const [notes, setNotes] = useState("");
   const [nextStep, setNextStep] = useState("");
-  const [followupAction, setFollowupAction] = useState<FollowupAction>(
-    followupDate ? "clear" : "keep"
+  const [disposition, setDisposition] = useState<InteractionDispositionType>(
+    followupDate ? "no-answer-retry" : "complete-clear"
+  );
+  const [followupTargetDate, setFollowupTargetDate] = useState(
+    addDaysIso(todayIso(), 3)
+  );
+  const [followupReason, setFollowupReason] = useState(
+    followupDate ? "Retry after no answer" : ""
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  function onDispositionChange(next: InteractionDispositionType) {
+    setDisposition(next);
+    const forcedOutcome = forcedOutcomeForDisposition(next);
+    if (forcedOutcome) setOutcome(forcedOutcome);
+    if (next === "no-answer-retry" && !followupReason.trim()) {
+      setFollowupReason("Retry after no answer");
+    }
+  }
+
+  function onOutcomeChange(next: Outcome) {
+    setOutcome(next);
+    if (next === "meeting") setDisposition("meeting-booked");
+    else if (next === "dead") setDisposition("mark-dead");
+  }
+
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!isDateOnly(date)) {
+      setError("Interaction date must be a valid date (YYYY-MM-DD)");
+      return;
+    }
+    if (dispositionNeedsFollowup(disposition)) {
+      const today = todayIso();
+      if (!isDateOnly(followupTargetDate)) {
+        setError("Follow-up date must be a valid date (YYYY-MM-DD)");
+        return;
+      }
+      if (followupTargetDate < today) {
+        setError("Follow-up date cannot be in the past");
+        return;
+      }
+      if (!followupReason.trim()) {
+        setError("Follow-up reason is required");
+        return;
+      }
+    }
+    const submittedOutcome = forcedOutcomeForDisposition(disposition) ?? outcome;
     const input: NewInteractionInput = {
       date,
       channel,
-      outcome,
+      outcome: submittedOutcome,
       person: person.trim() || undefined,
       notes: notes.trim() || undefined,
       nextStep: nextStep.trim() || undefined,
     };
+    const dispositionInput: InteractionDispositionInput = {
+      type: disposition,
+      followupDate: dispositionNeedsFollowup(disposition)
+        ? followupTargetDate
+        : undefined,
+      followupReason: dispositionNeedsFollowup(disposition)
+        ? followupReason.trim()
+        : undefined,
+    };
     startTransition(async () => {
       try {
-        await createInteractionAction(accountId, input);
-        if (followupDate && followupAction !== "keep") {
-          if (followupAction === "clear") {
-            await clearFollowupAction(accountId);
-          } else if (followupAction === "snooze-3") {
-            await snoozeFollowupAction(accountId, 3);
-          } else if (followupAction === "snooze-7") {
-            await snoozeFollowupAction(accountId, 7);
-          } else if (followupAction === "snooze-30") {
-            await snoozeFollowupAction(accountId, 30);
-          }
-        }
+        await createInteractionAction(accountId, input, dispositionInput);
         onDone();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -256,18 +308,15 @@ function InteractionForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <label className="block text-sm">
-          <span className="text-neutral-700">Date</span>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            required
-            className="input mt-1"
-          />
-        </label>
+    <form onSubmit={onSubmit} noValidate className="space-y-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <DateField
+          label="Date (YYYY-MM-DD)"
+          value={date}
+          onChange={setDate}
+          invalid={!isDateOnly(date) && !!error}
+          required
+        />
         <label className="block text-sm">
           <span className="text-neutral-700">Channel</span>
           <select
@@ -315,7 +364,8 @@ function InteractionForm({
         <span className="text-neutral-700">Outcome</span>
         <select
           value={outcome}
-          onChange={(e) => setOutcome(e.target.value as Outcome)}
+          onChange={(e) => onOutcomeChange(e.target.value as Outcome)}
+          disabled={forcedOutcomeForDisposition(disposition) !== null}
           className="input mt-1"
         >
           {OUTCOMES.map((o) => (
@@ -325,6 +375,64 @@ function InteractionForm({
           ))}
         </select>
       </label>
+
+      <label className="block text-sm">
+        <span className="text-neutral-700">Disposition</span>
+        <select
+          value={disposition}
+          onChange={(e) =>
+            onDispositionChange(e.target.value as InteractionDispositionType)
+          }
+          className="input mt-1"
+        >
+          {DISPOSITION_CHOICES.map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {dispositionNeedsFollowup(disposition) ? (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <DateField
+              label="Follow-up date (YYYY-MM-DD)"
+              value={followupTargetDate}
+              onChange={setFollowupTargetDate}
+              invalid={
+                (!isDateOnly(followupTargetDate) ||
+                  followupTargetDate < todayIso()) &&
+                !!error
+              }
+              min={todayIso()}
+              required
+            />
+            <label className="block text-sm">
+              <span className="text-neutral-700">Follow-up reason</span>
+              <input
+                type="text"
+                value={followupReason}
+                onChange={(e) => setFollowupReason(e.target.value)}
+                className="input mt-1"
+                aria-invalid={!followupReason.trim() && error ? true : undefined}
+              />
+            </label>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {[3, 7, 14, 30].map((days) => (
+              <button
+                key={days}
+                type="button"
+                onClick={() => setFollowupTargetDate(addDaysIso(todayIso(), days))}
+                className="chip"
+              >
+                +{days}d
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <label className="block text-sm">
         <span className="text-neutral-700">Notes</span>
@@ -348,35 +456,28 @@ function InteractionForm({
       </label>
 
       {followupDate ? (
-        <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
-          <div className="text-sm text-neutral-700">
-            Follow-up on{" "}
-            <span className="font-medium text-neutral-900">
-              {followupLabel(followupDate, todayIso())}
-            </span>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {FOLLOWUP_CHOICES.map((c) => (
-              <button
-                key={c.value}
-                type="button"
-                onClick={() => setFollowupAction(c.value)}
-                className={`chip ${followupAction === c.value ? "chip-active" : ""}`}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
+        <div className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700">
+          Existing follow-up{" "}
+          <span className="font-medium text-neutral-900">
+            {followupLabel(followupDate, todayIso())}
+          </span>
         </div>
       ) : null}
 
       {error ? (
-        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p
+          role="alert"
+          className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
           {error}
         </p>
       ) : null}
 
-      <div className="flex justify-end gap-2 pt-2">
+      <div aria-live="polite" className="sr-only">
+        {pending ? "Saving interaction." : ""}
+      </div>
+
+      <div className="flex flex-wrap justify-end gap-2 pt-2">
         <button type="button" onClick={onDone} className="btn-secondary">
           Cancel
         </button>

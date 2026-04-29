@@ -41,10 +41,36 @@ function TierCell({ account }: { account: Account }) {
   return <span className="text-neutral-400">—</span>;
 }
 
-export function AccountsTable({ accounts }: { accounts: Account[] }) {
+export function AccountsTable({
+  accounts,
+  totalCount,
+}: {
+  accounts: Account[];
+  totalCount: number;
+}) {
   if (accounts.length === 0) {
+    if (totalCount === 0) {
+      return (
+        <div className="rounded-lg border border-dashed border-neutral-300 bg-white p-8 text-center text-sm text-neutral-600 sm:p-12">
+          <div className="font-medium text-neutral-900">No accounts yet</div>
+          <p className="mx-auto mt-1 max-w-md">
+            Create your first account or import a spreadsheet to start building your
+            morning queue.
+          </p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <Link href="/accounts/new" className="btn-primary">
+              + New account
+            </Link>
+            <Link href="/import" className="btn-secondary">
+              Import accounts
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className="rounded-lg border border-dashed border-neutral-300 bg-white p-12 text-center text-sm text-neutral-500">
+      <div className="rounded-lg border border-dashed border-neutral-300 bg-white p-8 text-center text-sm text-neutral-500 sm:p-12">
         No accounts match. Adjust the filters or{" "}
         <Link href="/accounts/new" className="text-blue-600 hover:underline">
           create one
@@ -55,8 +81,8 @@ export function AccountsTable({ accounts }: { accounts: Account[] }) {
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-      <table className="min-w-full divide-y divide-neutral-200 text-sm">
+    <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+      <table className="min-w-[56rem] divide-y divide-neutral-200 text-sm">
         <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
           <tr>
             <Th>Name</Th>
@@ -65,7 +91,7 @@ export function AccountsTable({ accounts }: { accounts: Account[] }) {
             <Th>Industry / Location</Th>
             <Th className="text-right">Interactions</Th>
             <Th>Follow-up</Th>
-            <Th>Updated</Th>
+            <Th>Recent activity</Th>
           </tr>
         </thead>
         <tbody className="divide-y divide-neutral-100">
@@ -74,7 +100,8 @@ export function AccountsTable({ accounts }: { accounts: Account[] }) {
               <Td>
                 <Link
                   href={`/accounts/${a.id}`}
-                  className="font-medium text-neutral-900 hover:text-blue-700"
+                  className="block max-w-[16rem] truncate font-medium text-neutral-900 hover:text-blue-700"
+                  title={a.name}
                 >
                   {a.name}
                 </Link>
@@ -86,7 +113,9 @@ export function AccountsTable({ accounts }: { accounts: Account[] }) {
               <Td>{industryLocation(a)}</Td>
               <Td className="text-right tabular-nums">{a.interactionCount}</Td>
               <Td>{a.followupDate ?? "—"}</Td>
-              <Td className="text-neutral-500">{relativeDate(a.updatedAt)}</Td>
+              <Td className="text-neutral-500">
+                {relativeDate(a.lastActivityAt ?? a.updatedAt)}
+              </Td>
             </tr>
           ))}
         </tbody>
@@ -111,5 +140,5 @@ function Td({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <td className={`px-4 py-3 ${className}`}>{children}</td>;
+  return <td className={`px-4 py-3 align-top ${className}`}>{children}</td>;
 }

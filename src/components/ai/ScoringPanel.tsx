@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { TIERS, type Tier } from "@/lib/config";
 import { updateAccountAction } from "@/lib/actions";
-import type { Account } from "@/lib/types";
+import type { AiReadiness } from "@/lib/ai-providers";
+import type { Account, AiSource } from "@/lib/types";
 import { ConfidenceDot } from "./ConfidenceDot";
 import { HumanVerifiedBadge } from "./HumanVerifiedBadge";
 
@@ -28,18 +29,21 @@ function relativeDate(iso: string | null): string {
 
 export function ScoringPanel({
   account,
-  apiKeyConfigured,
+  aiReadiness,
   settingsConfigured,
+  stale,
 }: {
   account: Account;
-  apiKeyConfigured: boolean;
+  aiReadiness: AiReadiness;
   settingsConfigured: boolean;
+  stale: boolean;
 }) {
   const router = useRouter();
   const [scoring, setScoring] = useState(false);
   const [scoreError, setScoreError] = useState<string | null>(null);
   const [humanTier, setHumanTier] = useState<Tier | null>(account.humanTier);
   const [humanAt, setHumanAt] = useState<string | null>(account.humanVerifiedAt);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   async function runScore(): Promise<void> {
@@ -63,10 +67,19 @@ export function ScoringPanel({
   }
 
   function setOverride(tier: Tier | null): void {
+    const previousTier = humanTier;
+    const previousAt = humanAt;
     setHumanTier(tier);
     setHumanAt(tier === null ? null : new Date().toISOString());
+    setOverrideError(null);
     startTransition(async () => {
-      await updateAccountAction(account.id, { humanTier: tier });
+      try {
+        await updateAccountAction(account.id, { humanTier: tier });
+      } catch (err) {
+        setHumanTier(previousTier);
+        setHumanAt(previousAt);
+        setOverrideError(err instanceof Error ? err.message : String(err));
+      }
     });
   }
 
@@ -75,10 +88,13 @@ export function ScoringPanel({
   const hasHuman = humanTier !== null;
 
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-5">
-      <div className="flex items-center justify-between">
+    <section
+      className="rounded-lg border border-neutral-200 bg-white p-5"
+      aria-busy={scoring || pending}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-medium text-neutral-800">AI scoring</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <a
             href={linkedinSearchUrl(account.name)}
             target="_blank"
@@ -90,7 +106,7 @@ export function ScoringPanel({
           <button
             type="button"
             className="btn-secondary"
-            disabled={scoring || !apiKeyConfigured}
+            disabled={scoring || !aiReadiness.configured}
             onClick={runScore}
           >
             {scoring ? "Researching…" : aiScored ? "Re-score" : "Research & score"}
@@ -98,14 +114,14 @@ export function ScoringPanel({
         </div>
       </div>
 
-      {!apiKeyConfigured && (
+      {!aiReadiness.configured && (
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          Set <code className="font-mono text-xs">ANTHROPIC_API_KEY</code> in{" "}
-          <code className="font-mono text-xs">.env</code> to enable scoring.
+          Set <code className="font-mono text-xs">{aiReadiness.envVar}</code> in{" "}
+          <code className="font-mono text-xs">.env</code> to enable {aiReadiness.label} scoring.
         </div>
       )}
 
-      {apiKeyConfigured && !settingsConfigured && (
+      {aiReadiness.configured && !settingsConfigured && (
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           Fill in company description and tier definitions in{" "}
           <Link href="/settings" className="underline">
@@ -116,10 +132,26 @@ export function ScoringPanel({
       )}
 
       {scoreError && (
-        <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <div
+          role="alert"
+          className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+        >
           {scoreError}
         </div>
       )}
+
+      {overrideError && (
+        <div
+          role="alert"
+          className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+        >
+          {overrideError}
+        </div>
+      )}
+
+      <div aria-live="polite" className="sr-only">
+        {scoring ? "Scoring account with AI." : ""}
+      </div>
 
       {/* Proposed tier row */}
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -143,6 +175,16 @@ export function ScoringPanel({
               ? "Last attempt failed"
               : ""}
           </div>
+          {stale && (
+            <div className="mt-1 inline-flex rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+              Stale - settings or account inputs changed
+            </div>
+          )}
+          {account.aiMetadata && (
+            <div className="mt-1 text-xs text-neutral-500">
+              {account.aiMetadata.provider} / {account.aiMetadata.model}
+            </div>
+          )}
         </div>
 
         <div className="sm:col-span-2">
@@ -154,6 +196,7 @@ export function ScoringPanel({
                 type="button"
                 onClick={() => setOverride(t)}
                 disabled={pending}
+                aria-pressed={humanTier === t}
                 className={`chip ${humanTier === t ? "chip-active" : ""}`}
               >
                 Tier {t}
@@ -163,6 +206,7 @@ export function ScoringPanel({
               type="button"
               onClick={() => setOverride(null)}
               disabled={pending || !hasHuman}
+              aria-pressed={!hasHuman}
               className="chip"
             >
               Clear override
@@ -177,7 +221,10 @@ export function ScoringPanel({
 
       {/* Scoring error card */}
       {account.scoringError && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <div
+          role="alert"
+          className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+        >
           <div className="font-medium">Scoring failed</div>
           <details className="mt-1">
             <summary className="cursor-pointer text-xs text-red-700">Raw response</summary>
@@ -197,12 +244,12 @@ export function ScoringPanel({
           <EvidenceRow
             label="Funding"
             summary={evidence.funding?.summary ?? null}
-            source={evidence.funding?.source ?? null}
+            sources={evidence.funding?.sources ?? []}
           />
           <EvidenceRow
             label="Hiring"
             summary={evidence.hiring?.summary ?? null}
-            source={evidence.hiring?.source ?? null}
+            sources={evidence.hiring?.sources ?? []}
           />
           <div>
             <div className="text-xs font-medium text-neutral-600">Countries</div>
@@ -221,6 +268,26 @@ export function ScoringPanel({
               )}
             </div>
           </div>
+          {evidence.countrySources.length > 0 ? (
+            <div>
+              <div className="text-xs font-medium text-neutral-600">Country sources</div>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {evidence.countrySources.slice(0, 3).map((source) => (
+                  <a
+                    key={source.url}
+                    href={source.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    {source.title ?? source.url} ↗
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : evidence.countries.length > 0 ? (
+            <div className="text-xs text-neutral-500">Countries are unsourced.</div>
+          ) : null}
           <div>
             <div className="text-xs font-medium text-neutral-600">Entity match</div>
             <div className="mt-1 flex items-center gap-2">
@@ -230,6 +297,11 @@ export function ScoringPanel({
               </span>
             </div>
           </div>
+          {evidence.entityMatchFlag && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+              {evidence.entityMatchFlag}
+            </div>
+          )}
         </div>
       )}
 
@@ -265,12 +337,13 @@ export function ScoringPanel({
 function EvidenceRow({
   label,
   summary,
-  source,
+  sources,
 }: {
   label: string;
   summary: string | null;
-  source: string | null;
+  sources: AiSource[];
 }) {
+  const source = sources[0] ?? null;
   return (
     <div>
       <div className="text-xs font-medium text-neutral-600">{label}</div>
@@ -282,12 +355,12 @@ function EvidenceRow({
               <>
                 {" "}
                 <a
-                  href={source}
+                  href={source.url}
                   target="_blank"
                   rel="noreferrer"
                   className="text-xs text-blue-600 hover:underline"
                 >
-                  source ↗
+                  {source.title ?? "source"} ↗
                 </a>
               </>
             )}

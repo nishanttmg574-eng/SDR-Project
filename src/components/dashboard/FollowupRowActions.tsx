@@ -14,7 +14,7 @@ export function FollowupRowActions({ accountId }: { accountId: string }) {
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-3 text-xs font-medium">
+    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium sm:justify-end">
       <Link
         href={`/accounts/${accountId}?tab=interactions&new=1`}
         className="text-blue-600 hover:underline"

@@ -27,3 +27,6 @@ data/*.db-shm
 # private planning docs (not shipped with the repo)
 .notes/
 AUDIT_IMPLEMENTATION_PLAN.md
+
+# local-only test files
+src/lib/phase*.test.ts

@@ -6,11 +6,10 @@ import { FollowupRowActions } from "./FollowupRowActions";
 export function FollowupsSection() {
   const today = todayIso();
   const rows = listFollowupsWithBuckets(today, 7);
-  if (rows.length === 0) return null;
-
   const overdue = rows.filter((r) => r.bucket === "overdue");
   const todayBucket = rows.filter((r) => r.bucket === "today");
   const upcoming = rows.filter((r) => r.bucket === "upcoming");
+  const dueCount = overdue.length + todayBucket.length;
 
   return (
     <section className="space-y-3">
@@ -19,13 +18,25 @@ export function FollowupsSection() {
           Follow-ups
           <span className="ml-2 text-neutral-400">({rows.length})</span>
         </h2>
-        <Link
-          href="/?has_followup=1"
-          className="text-xs text-blue-600 hover:underline"
-        >
-          View all
-        </Link>
+        {rows.length > 0 ? (
+          <Link
+            href="/?has_followup=1"
+            className="text-xs text-blue-600 hover:underline"
+          >
+            View all
+          </Link>
+        ) : null}
       </div>
+
+      {rows.length === 0 ? (
+        <div className="rounded-lg border border-neutral-200 bg-white px-4 py-6 text-sm text-neutral-500">
+          No follow-ups due. Today is clear.
+        </div>
+      ) : dueCount === 0 ? (
+        <div className="rounded-lg border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-500">
+          No follow-ups due today. Upcoming reminders are listed below.
+        </div>
+      ) : null}
 
       {overdue.length > 0 ? (
         <Group
@@ -80,14 +91,14 @@ function Group({
         {rows.map((r) => (
           <li
             key={r.accountId}
-            className={`flex items-center gap-3 px-4 py-2.5 text-sm ${rowClass}`}
+            className={`grid gap-2 px-4 py-2.5 text-sm sm:grid-cols-[6rem_minmax(0,12rem)_minmax(0,1fr)_auto] sm:items-center ${rowClass}`}
           >
-            <span className="w-24 shrink-0 font-medium tabular-nums text-neutral-700">
+            <span className="font-medium tabular-nums text-neutral-700">
               {formatDate(r.followupDate, today)}
             </span>
             <Link
               href={`/accounts/${r.accountId}`}
-              className="w-48 shrink-0 truncate font-medium text-neutral-900 hover:text-blue-700"
+              className="min-w-0 truncate font-medium text-neutral-900 hover:text-blue-700"
             >
               {r.accountName}
             </Link>

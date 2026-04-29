@@ -1,6 +1,17 @@
-import type { Account, AiEvidence, Confidence, Settings } from "./types";
+import {
+  SCORE_PROMPT_VERSION,
+  SCORE_TOOL_CONFIG,
+  buildAiMetadata,
+  scoreInputHash,
+} from "./ai-metadata";
+import {
+  AiProviderRequestError,
+  AiSchemaValidationError,
+} from "./ai-errors";
+import { buildEvidence, hasRequiredEvidenceSources } from "./ai-schemas";
+import { getProvider } from "./ai-providers";
+import type { Account, AiEvidence, AiMetadata, Confidence, Settings } from "./types";
 import type { Tier } from "./config";
-import { getClient } from "./anthropic";
 
 export type ScoringOutcome =
   | {
@@ -11,13 +22,21 @@ export type ScoringOutcome =
       reasoning: string;
       gaps: string[];
       proposedAt: string;
+      metadata: AiMetadata;
     }
-  | { ok: false; error: string; rawResponse: string | null };
+  | {
+      ok: false;
+      error: string;
+      errorType: "provider" | "schema";
+      rawResponse: string | null;
+      transient?: boolean;
+      retryAfterMs?: number | null;
+    };
 
 const TIMEOUT_MS = 180_000;
 
 function buildSystem(settings: Settings): string {
-  const company = settings.company.trim() || "(not configured — ask the user to fill Settings)";
+  const company = settings.company.trim() || "(not configured - ask the user to fill Settings)";
   const tier1 = settings.tier1Def.trim() || "(not configured)";
   const tiers = settings.tiersDef.trim() || "(not configured)";
   return `You score target accounts for this company:
@@ -30,27 +49,28 @@ Other tier definitions (Tier 2, 3, 4):
 ${tiers}
 
 Research rules:
-- Run at most 2 web searches. Prefer the account's own website and well-known funding / press sources.
-- Cite sources by returning their URLs inline in the JSON fields below.
+- Run at most 2 web searches. Prefer the account's own website and well-known funding, jobs, and press sources.
+- Return source objects for evidence with url, title, snippet, and retrievedAt.
+- Funding and hiring evidence must include at least one source when those fields are present.
+- Countries can be unsourced, but if you have sources for country evidence, include them in countryEvidence.
+- Downgrade or clearly flag Tier 1 proposals when entity_match is low.
 
-Respond with ONLY a JSON object on your final message — no prose, no markdown fences — matching this schema exactly:
-
+Respond only with a JSON object matching this shape:
 {
   "proposedTier": "1" | "2" | "3" | "4",
   "confidence": "high" | "medium" | "low",
   "evidence": {
-    "funding":  { "summary": string, "source": string | null } | null,
+    "funding": { "summary": string, "sources": [{ "url": string, "title": string | null, "snippet": string | null, "retrievedAt": string | null }] } | null,
     "countries": string[],
-    "hiring":   { "summary": string, "source": string | null } | null,
+    "countryEvidence": [{ "country": string, "sources": [{ "url": string, "title": string | null, "snippet": string | null, "retrievedAt": string | null }] }],
+    "hiring": { "summary": string, "sources": [{ "url": string, "title": string | null, "snippet": string | null, "retrievedAt": string | null }] } | null,
     "entity_match": "high" | "medium" | "low"
   },
   "reasoning": string,
   "gaps": string[]
 }
 
-"entity_match" is your confidence that you actually found the right company (not a namesake).
-"reasoning" is two sentences maximum.
-"gaps" is a list of what you couldn't verify.`;
+"entity_match" is your confidence that you found the right company, not a namesake. Keep reasoning to two sentences maximum.`;
 }
 
 function buildUser(account: Account): string {
@@ -60,59 +80,59 @@ function buildUser(account: Account): string {
   if (account.industry) lines.push(`Industry hint: ${account.industry}`);
   if (account.location) lines.push(`Location hint: ${account.location}`);
   if (account.headcount) lines.push(`Known headcount: ${account.headcount}`);
+  if (account.customFields) {
+    lines.push("Imported spreadsheet fields:");
+    for (const [key, value] of Object.entries(account.customFields)) {
+      lines.push(`- ${key}: ${value}`);
+    }
+  }
   return lines.join("\n");
 }
 
-function stripFences(text: string): string {
-  let t = text.trim();
-  if (t.startsWith("```")) {
-    t = t.replace(/^```(?:json)?\s*/i, "");
-    t = t.replace(/```\s*$/, "");
+function withTimeout(parentSignal?: AbortSignal): {
+  signal: AbortSignal;
+  cleanup: () => void;
+} {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  if (parentSignal) {
+    if (parentSignal.aborted) controller.abort();
+    else parentSignal.addEventListener("abort", () => controller.abort(), { once: true });
   }
-  return t.trim();
-}
-
-function pickLastText(content: unknown[]): string | null {
-  for (let i = content.length - 1; i >= 0; i--) {
-    const block = content[i] as { type?: string; text?: string };
-    if (block?.type === "text" && typeof block.text === "string" && block.text.trim()) {
-      return block.text;
-    }
-  }
-  return null;
-}
-
-function validTier(v: unknown): v is Tier {
-  return v === "1" || v === "2" || v === "3" || v === "4";
-}
-
-function validConfidence(v: unknown): v is Confidence {
-  return v === "high" || v === "medium" || v === "low";
-}
-
-function sanitizeUrl(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const t = v.trim();
-  return /^https?:\/\//i.test(t) ? t : null;
-}
-
-function sanitizeEvidence(raw: unknown): AiEvidence | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-  const pickPart = (p: unknown) => {
-    if (!p || typeof p !== "object") return null;
-    const obj = p as Record<string, unknown>;
-    const summary = typeof obj.summary === "string" ? obj.summary : "";
-    return { summary, source: sanitizeUrl(obj.source) };
-  };
-  const countries = Array.isArray(r.countries)
-    ? r.countries.filter((c): c is string => typeof c === "string")
-    : [];
   return {
-    funding: pickPart(r.funding),
-    countries,
-    hiring: pickPart(r.hiring),
-    entity_match: validConfidence(r.entity_match) ? r.entity_match : null,
+    signal: controller.signal,
+    cleanup: () => clearTimeout(timer),
+  };
+}
+
+function failureFromError(error: unknown, controllerSignal: AbortSignal): Exclude<ScoringOutcome, { ok: true }> {
+  if (error instanceof AiSchemaValidationError) {
+    return {
+      ok: false,
+      error: error.message,
+      errorType: "schema",
+      rawResponse: error.rawResponse,
+    };
+  }
+  if (error instanceof AiProviderRequestError) {
+    return {
+      ok: false,
+      error: error.message,
+      errorType: "provider",
+      rawResponse: error.rawResponse,
+      transient: error.transient,
+      retryAfterMs: error.retryAfterMs,
+    };
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    ok: false,
+    error: controllerSignal.aborted
+      ? `Timeout or cancelled (${TIMEOUT_MS}ms budget)`
+      : message,
+    errorType: "provider",
+    rawResponse: null,
+    transient: controllerSignal.aborted,
   };
 }
 
@@ -121,83 +141,59 @@ export async function scoreAccount(
   settings: Settings,
   opts: { signal?: AbortSignal } = {}
 ): Promise<ScoringOutcome> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  // Respect parent-supplied signal (e.g. bulk cancel)
-  if (opts.signal) {
-    if (opts.signal.aborted) controller.abort();
-    else opts.signal.addEventListener("abort", () => controller.abort(), { once: true });
-  }
+  const timeout = withTimeout(opts.signal);
+  const provider = getProvider(settings.aiProvider);
+  const inputHash = scoreInputHash(account);
 
-  let rawText: string | null = null;
   try {
-    const client = getClient();
-    const response = await client.messages.create(
-      {
-        model: settings.model,
-        max_tokens: 2048,
-        system: buildSystem(settings),
-        tools: [
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          { type: "web_search_20250305", name: "web_search", max_uses: 2 } as any,
-        ],
-        messages: [{ role: "user", content: buildUser(account) }],
-      },
-      { signal: controller.signal }
-    );
-
-    const content = Array.isArray(response.content) ? response.content : [];
-    rawText = pickLastText(content as unknown[]);
-    if (!rawText) {
-      return {
-        ok: false,
-        error: "Model returned no text block",
-        rawResponse: JSON.stringify(content).slice(0, 4000),
-      };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await provider.score({
+          settings,
+          system: buildSystem(settings),
+          user: buildUser(account),
+          signal: timeout.signal,
+        });
+        const evidence = buildEvidence(result.value);
+        if (!hasRequiredEvidenceSources(evidence)) {
+          throw new AiSchemaValidationError(
+            "Funding and hiring evidence must include sources when present",
+            result.rawResponse
+          );
+        }
+        return {
+          ok: true,
+          tier: result.value.proposedTier,
+          confidence: result.value.confidence,
+          evidence,
+          reasoning: result.value.reasoning,
+          gaps: result.value.gaps,
+          proposedAt: new Date().toISOString(),
+          metadata: buildAiMetadata({
+            settings,
+            promptVersion: SCORE_PROMPT_VERSION,
+            inputHash,
+            toolConfig: SCORE_TOOL_CONFIG,
+            providerRequestId: result.providerRequestId,
+            usage: result.usage,
+          }),
+        };
+      } catch (error) {
+        if (error instanceof AiSchemaValidationError && attempt === 0) {
+          continue;
+        }
+        throw error;
+      }
     }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(stripFences(rawText));
-    } catch {
-      return { ok: false, error: "JSON parse failed", rawResponse: rawText };
-    }
-
-    if (!parsed || typeof parsed !== "object") {
-      return { ok: false, error: "Response was not a JSON object", rawResponse: rawText };
-    }
-    const p = parsed as Record<string, unknown>;
-    if (!validTier(p.proposedTier)) {
-      return { ok: false, error: `Invalid proposedTier: ${String(p.proposedTier)}`, rawResponse: rawText };
-    }
-    if (!validConfidence(p.confidence)) {
-      return { ok: false, error: `Invalid confidence: ${String(p.confidence)}`, rawResponse: rawText };
-    }
-    const evidence = sanitizeEvidence(p.evidence);
-    if (!evidence) {
-      return { ok: false, error: "Missing or invalid evidence object", rawResponse: rawText };
-    }
-    const reasoning = typeof p.reasoning === "string" ? p.reasoning : "";
-    const gaps = Array.isArray(p.gaps)
-      ? p.gaps.filter((g): g is string => typeof g === "string")
-      : [];
-
     return {
-      ok: true,
-      tier: p.proposedTier,
-      confidence: p.confidence,
-      evidence,
-      reasoning,
-      gaps,
-      proposedAt: new Date().toISOString(),
+      ok: false,
+      error: "Schema validation failed after retry",
+      errorType: "schema",
+      rawResponse: null,
     };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (controller.signal.aborted) {
-      return { ok: false, error: `Timeout or cancelled (${TIMEOUT_MS}ms budget)`, rawResponse: rawText };
-    }
-    return { ok: false, error: message, rawResponse: rawText };
+  } catch (error) {
+    return failureFromError(error, timeout.signal);
   } finally {
-    clearTimeout(timer);
+    timeout.cleanup();
   }
 }

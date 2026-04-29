@@ -7,11 +7,13 @@ import {
   clearCallPrep,
   createAccount,
   deleteAccount,
-  getAccount,
   importAccounts,
+  previewImportAccounts,
   updateAccount,
+  type ImportPreviewResult,
+  type ImportResult,
 } from "./accounts";
-import { db } from "./db";
+import { assertDateOnly, assertDateOnlyOnOrAfter, todayIso } from "./dates";
 import {
   clearFollowup,
   setFollowup,
@@ -19,7 +21,6 @@ import {
 } from "./followups";
 import type { ParsedRow } from "./import";
 import {
-  createInteraction,
   deleteInteraction,
 } from "./interactions";
 import {
@@ -30,11 +31,14 @@ import {
 import { saveSettings } from "./settings";
 import {
   CHANNELS,
+  INTERACTION_DISPOSITIONS,
+  type InteractionDispositionInput,
   OUTCOMES,
   type NewInteractionInput,
   type NewProspectInput,
   type ProspectPatch,
 } from "./types";
+import { recordInteractionWithDisposition } from "./workflow";
 
 function str(value: FormDataEntryValue | null): string {
   return typeof value === "string" ? value : "";
@@ -81,9 +85,7 @@ export async function deleteAccountAction(id: string): Promise<void> {
   redirect("/");
 }
 
-export async function importAccountsAction(
-  rows: ParsedRow[]
-): Promise<{ added: number; updated: number }> {
+function cleanImportRows(rows: ParsedRow[]): ParsedRow[] {
   if (!Array.isArray(rows)) {
     throw new Error("Invalid payload: expected an array of rows");
   }
@@ -98,11 +100,32 @@ export async function importAccountsAction(
       industry: typeof row.industry === "string" ? row.industry : undefined,
       location: typeof row.location === "string" ? row.location : undefined,
       headcount: typeof row.headcount === "string" ? row.headcount : undefined,
+      customFields:
+        row.customFields && typeof row.customFields === "object"
+          ? Object.fromEntries(
+              Object.entries(row.customFields)
+                .filter(([key, value]) => key.trim() && typeof value === "string" && value.trim())
+                .map(([key, value]) => [key.trim(), value.trim()])
+            )
+          : undefined,
     });
   }
   if (clean.length === 0) {
     throw new Error("No rows with a name to import");
   }
+  return clean;
+}
+
+export async function previewImportAccountsAction(
+  rows: ParsedRow[]
+): Promise<ImportPreviewResult> {
+  return previewImportAccounts(cleanImportRows(rows));
+}
+
+export async function importAccountsAction(
+  rows: ParsedRow[]
+): Promise<ImportResult> {
+  const clean = cleanImportRows(rows);
   const result = importAccounts(clean);
   revalidatePath("/");
   return result;
@@ -114,6 +137,7 @@ export async function saveSettingsAction(formData: FormData): Promise<void> {
     company: str(formData.get("company")),
     tier1Def: str(formData.get("tier1Def")),
     tiersDef: str(formData.get("tiersDef")),
+    aiProvider: str(formData.get("aiProvider")) as "openai" | "anthropic",
     model: str(formData.get("model")),
   });
   revalidatePath("/", "layout");
@@ -126,9 +150,7 @@ function revalidateAccount(id: string): void {
 }
 
 function validateInteraction(input: NewInteractionInput): NewInteractionInput {
-  if (!input.date || !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
-    throw new Error("Date is required (YYYY-MM-DD)");
-  }
+  assertDateOnly(input.date, "Interaction date");
   if (input.channel && !CHANNELS.includes(input.channel)) {
     throw new Error(`Invalid channel: ${input.channel}`);
   }
@@ -138,27 +160,24 @@ function validateInteraction(input: NewInteractionInput): NewInteractionInput {
   return input;
 }
 
+function validateDisposition(
+  disposition?: InteractionDispositionInput
+): InteractionDispositionInput | undefined {
+  if (!disposition) return undefined;
+  if (!INTERACTION_DISPOSITIONS.includes(disposition.type)) {
+    throw new Error(`Invalid disposition: ${disposition.type}`);
+  }
+  return disposition;
+}
+
 export async function createInteractionAction(
   accountId: string,
-  input: NewInteractionInput
+  input: NewInteractionInput,
+  disposition?: InteractionDispositionInput
 ): Promise<void> {
   const clean = validateInteraction(input);
-
-  const run = db.transaction(() => {
-    const account = getAccount(accountId);
-    if (!account) throw new Error("Account not found");
-
-    let nextStage: Stage | undefined;
-    if (clean.outcome === "meeting") nextStage = "meeting";
-    else if (clean.outcome === "dead") nextStage = "dead";
-    else if (account.stage === "new" && clean.outcome) nextStage = "working";
-
-    if (nextStage && nextStage !== account.stage) {
-      updateAccount(accountId, { stage: nextStage });
-    }
-    createInteraction(accountId, clean);
-  });
-  run();
+  const cleanDisposition = validateDisposition(disposition);
+  recordInteractionWithDisposition(accountId, clean, cleanDisposition);
   revalidateAccount(accountId);
 }
 
@@ -199,9 +218,7 @@ export async function setFollowupAction(
   accountId: string,
   patch: { date: string; reason: string }
 ): Promise<void> {
-  if (!patch.date || !/^\d{4}-\d{2}-\d{2}$/.test(patch.date)) {
-    throw new Error("Date is required (YYYY-MM-DD)");
-  }
+  assertDateOnlyOnOrAfter(patch.date, todayIso(), "Follow-up date");
   setFollowup(accountId, patch);
   revalidateAccount(accountId);
 }

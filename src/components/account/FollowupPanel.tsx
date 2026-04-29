@@ -6,25 +6,9 @@ import {
   setFollowupAction,
   snoozeFollowupAction,
 } from "@/lib/actions";
+import { addDaysIso, isDateOnly, todayIso } from "@/lib/dates";
 import type { Account } from "@/lib/types";
-
-function todayIso(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
-}
-
-function addDaysIso(iso: string, days: number): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + days);
-  const yy = dt.getUTCFullYear();
-  const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(dt.getUTCDate()).padStart(2, "0");
-  return `${yy}-${mm}-${dd}`;
-}
+import { DateField } from "@/components/ui/DateField";
 
 const QUICK_PICKS: { label: string; days: number }[] = [
   { label: "+3d", days: 3 },
@@ -55,6 +39,15 @@ export function FollowupPanel({ account }: { account: Account }) {
   function onSave(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const today = todayIso();
+    if (!isDateOnly(date)) {
+      setError("Follow-up date must be a valid date (YYYY-MM-DD)");
+      return;
+    }
+    if (date < today) {
+      setError("Follow-up date cannot be in the past");
+      return;
+    }
     if (!reason.trim()) {
       setError("Reason is required");
       return;
@@ -90,6 +83,8 @@ export function FollowupPanel({ account }: { account: Account }) {
   const savedLabel = hasFollowup
     ? `Saved: ${account.followupDate}`
     : "No follow-up set";
+  const minFollowupDate = todayIso();
+  const dateInvalid = !isDateOnly(date) || date < minFollowupDate;
 
   return (
     <section className="max-w-xl space-y-5">
@@ -98,16 +93,18 @@ export function FollowupPanel({ account }: { account: Account }) {
         <p className="mt-0.5 text-xs text-neutral-500">{savedLabel}</p>
       </div>
 
-      <form onSubmit={onSave} className="space-y-4 rounded-lg border border-neutral-200 bg-white p-4">
-        <label className="block text-sm">
-          <span className="text-neutral-700">Date</span>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="input mt-1"
-          />
-        </label>
+      <form
+        onSubmit={onSave}
+        noValidate
+        className="space-y-4 rounded-lg border border-neutral-200 bg-white p-4"
+      >
+        <DateField
+          label="Date (YYYY-MM-DD)"
+          value={date}
+          onChange={setDate}
+          invalid={dateInvalid && !!error}
+          min={minFollowupDate}
+        />
 
         <div className="flex flex-wrap gap-2">
           {QUICK_PICKS.map((p) => (
@@ -135,13 +132,20 @@ export function FollowupPanel({ account }: { account: Account }) {
         </label>
 
         {error ? (
-          <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p
+            role="alert"
+            className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+          >
             {error}
           </p>
         ) : null}
 
+        <div aria-live="polite" className="sr-only">
+          {pending ? "Saving follow-up." : ""}
+        </div>
+
         <div className="flex items-center justify-between">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button type="submit" disabled={pending} className="btn-primary">
               {pending ? "Saving…" : hasFollowup ? "Update follow-up" : "Set follow-up"}
             </button>

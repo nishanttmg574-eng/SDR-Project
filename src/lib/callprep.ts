@@ -1,9 +1,26 @@
-import type { Account, Interaction, Prospect, Settings } from "./types";
-import { getClient } from "./anthropic";
+import {
+  CALL_PREP_PROMPT_VERSION,
+  CALL_PREP_TOOL_CONFIG,
+  buildAiMetadata,
+  callPrepInputHash,
+} from "./ai-metadata";
+import {
+  AiProviderRequestError,
+  AiSchemaValidationError,
+} from "./ai-errors";
+import { formatCallPrep } from "./ai-schemas";
+import { getProvider } from "./ai-providers";
+import type { Account, AiMetadata, Interaction, Prospect, Settings } from "./types";
 
 export type CallPrepOutcome =
-  | { ok: true; text: string }
-  | { ok: false; error: string };
+  | { ok: true; text: string; metadata: AiMetadata }
+  | {
+      ok: false;
+      error: string;
+      errorType: "provider" | "schema";
+      transient?: boolean;
+      retryAfterMs?: number | null;
+    };
 
 const TIMEOUT_MS = 90_000;
 
@@ -18,36 +35,25 @@ ${company}
 Our tier-1 ideal customer profile:
 ${tier1}
 
-You will receive the rep's own notes, interaction history, and prospects for this specific account. Use ONLY that information — do not invent facts, do not speculate about funding or people that were not mentioned.
+Use only the rep's notes, interaction history, known prospects, and existing scoring evidence. Do not invent facts, people, funding, or hiring details that were not provided.
 
-Produce exactly 5 sections, plain text, no markdown fences, no preamble. Use these headers verbatim, each on its own line followed by the content:
-
-CALL OPENER
-2-3 sentences designed to be read aloud in 15-20 seconds. Reference something specific from the notes or last interaction if possible.
-
-QUALIFYING QUESTIONS
-Three numbered questions (1., 2., 3.) tailored to what is NOT yet known from the notes.
-
-VALUE BRIDGE
-One sentence connecting our company to this account's situation.
-
-CTA
-The one concrete ask for this call (book a demo, intro meeting, next-step date, etc.).
-
-LIKELY OBJECTION + HANDLER
-One objection this account is likely to raise, followed by a 1-2 sentence handler.
-
-If a section cannot be grounded in the inputs (empty notes and no interactions), write a reasonable generic version and append " (generic — thin notes)" to the end of that section.`;
+Return a structured JSON object with:
+- callOpener: 2-3 sentences designed to be read aloud in 15-20 seconds.
+- qualifyingQuestions: exactly 3 questions tailored to what is not yet known.
+- valueBridge: one sentence connecting our company to this account's situation.
+- cta: one concrete ask for this call.
+- likelyObjectionAndHandler: one likely objection and a short handler.
+- thinNotes: true when the inputs are too thin and the output is mostly generic.`;
 }
 
 function formatInteraction(i: Interaction): string {
   const parts: string[] = [`[${i.date}]`];
   if (i.channel) parts.push(i.channel);
-  if (i.outcome) parts.push(`• ${i.outcome}`);
+  if (i.outcome) parts.push(`- ${i.outcome}`);
   if (i.person) parts.push(`with ${i.person}`);
   let line = parts.join(" ");
-  if (i.notes.trim()) line += ` — ${i.notes.trim()}`;
-  if (i.nextStep?.trim()) line += ` — next: ${i.nextStep.trim()}`;
+  if (i.notes.trim()) line += ` - ${i.notes.trim()}`;
+  if (i.nextStep?.trim()) line += ` - next: ${i.nextStep.trim()}`;
   return line;
 }
 
@@ -55,7 +61,9 @@ function formatProspect(p: Prospect): string {
   const parts: string[] = [p.name];
   if (p.title) parts.push(p.title);
   if (p.email) parts.push(p.email);
-  return parts.join(" • ");
+  if (p.phone) parts.push(p.phone);
+  if (p.linkedin) parts.push(p.linkedin);
+  return parts.join(" - ");
 }
 
 function buildUser(
@@ -79,7 +87,7 @@ function buildUser(
   if (interactions.length === 0) {
     lines.push("(none)");
   } else {
-    for (const i of interactions) lines.push(`- ${formatInteraction(i)}`);
+    for (const i of interactions.slice(0, 3)) lines.push(`- ${formatInteraction(i)}`);
   }
 
   lines.push("");
@@ -97,27 +105,58 @@ function buildUser(
     if (ev.funding?.summary) lines.push(`- Funding: ${ev.funding.summary}`);
     if (ev.countries.length > 0) lines.push(`- Countries: ${ev.countries.join(", ")}`);
     if (ev.hiring?.summary) lines.push(`- Hiring: ${ev.hiring.summary}`);
+    if (ev.entity_match) lines.push(`- Entity match: ${ev.entity_match}`);
+    if (ev.entityMatchFlag) lines.push(`- Warning: ${ev.entityMatchFlag}`);
   }
 
   return lines.join("\n");
 }
 
-function stripFences(text: string): string {
-  let t = text.trim();
-  if (t.startsWith("```")) {
-    t = t.replace(/^```(?:\w+)?\s*/i, "");
-    t = t.replace(/```\s*$/, "");
+function withTimeout(parentSignal?: AbortSignal): {
+  signal: AbortSignal;
+  cleanup: () => void;
+} {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  if (parentSignal) {
+    if (parentSignal.aborted) controller.abort();
+    else parentSignal.addEventListener("abort", () => controller.abort(), { once: true });
   }
-  return t.trim();
+  return {
+    signal: controller.signal,
+    cleanup: () => clearTimeout(timer),
+  };
 }
 
-function collectText(content: unknown[]): string {
-  const pieces: string[] = [];
-  for (const block of content) {
-    const b = block as { type?: string; text?: string };
-    if (b?.type === "text" && typeof b.text === "string") pieces.push(b.text);
+function failureFromError(
+  error: unknown,
+  controllerSignal: AbortSignal
+): Exclude<CallPrepOutcome, { ok: true }> {
+  if (error instanceof AiSchemaValidationError) {
+    return {
+      ok: false,
+      error: error.message,
+      errorType: "schema",
+    };
   }
-  return pieces.join("\n").trim();
+  if (error instanceof AiProviderRequestError) {
+    return {
+      ok: false,
+      error: error.message,
+      errorType: "provider",
+      transient: error.transient,
+      retryAfterMs: error.retryAfterMs,
+    };
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    ok: false,
+    error: controllerSignal.aborted
+      ? `Timeout or cancelled (${TIMEOUT_MS}ms budget)`
+      : message,
+    errorType: "provider",
+    transient: controllerSignal.aborted,
+  };
 }
 
 export async function generateCallPrep(
@@ -127,40 +166,46 @@ export async function generateCallPrep(
   prospects: Prospect[],
   opts: { signal?: AbortSignal } = {}
 ): Promise<CallPrepOutcome> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  if (opts.signal) {
-    if (opts.signal.aborted) controller.abort();
-    else opts.signal.addEventListener("abort", () => controller.abort(), { once: true });
-  }
+  const timeout = withTimeout(opts.signal);
+  const provider = getProvider(settings.aiProvider);
+  const inputHash = callPrepInputHash(account, interactions, prospects);
 
   try {
-    const client = getClient();
-    const response = await client.messages.create(
-      {
-        model: settings.model,
-        max_tokens: 1500,
-        system: buildSystem(settings),
-        messages: [
-          { role: "user", content: buildUser(account, interactions, prospects) },
-        ],
-      },
-      { signal: controller.signal }
-    );
-
-    const content = Array.isArray(response.content) ? response.content : [];
-    const text = stripFences(collectText(content as unknown[]));
-    if (!text) {
-      return { ok: false, error: "Model returned no text" };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await provider.callPrep({
+          settings,
+          system: buildSystem(settings),
+          user: buildUser(account, interactions, prospects),
+          signal: timeout.signal,
+        });
+        return {
+          ok: true,
+          text: formatCallPrep(result.value),
+          metadata: buildAiMetadata({
+            settings,
+            promptVersion: CALL_PREP_PROMPT_VERSION,
+            inputHash,
+            toolConfig: CALL_PREP_TOOL_CONFIG,
+            providerRequestId: result.providerRequestId,
+            usage: result.usage,
+          }),
+        };
+      } catch (error) {
+        if (error instanceof AiSchemaValidationError && attempt === 0) {
+          continue;
+        }
+        throw error;
+      }
     }
-    return { ok: true, text };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (controller.signal.aborted) {
-      return { ok: false, error: `Timeout (${TIMEOUT_MS}ms budget)` };
-    }
-    return { ok: false, error: message };
+    return {
+      ok: false,
+      error: "Schema validation failed after retry",
+      errorType: "schema",
+    };
+  } catch (error) {
+    return failureFromError(error, timeout.signal);
   } finally {
-    clearTimeout(timer);
+    timeout.cleanup();
   }
 }

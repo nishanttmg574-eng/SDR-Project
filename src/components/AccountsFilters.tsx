@@ -26,9 +26,11 @@ export function AccountsFilters() {
 
   const currentTier = params.get("tier");
   const currentStage = params.get("stage");
+  const currentFollowup = params.get("followup");
   const needsReview = params.get("needs_review") === "1";
   const hasFollowup = params.get("has_followup") === "1";
   const touched = params.get("touched") === "1";
+  const stale = params.get("stale") === "1";
   const currentQ = params.get("q") ?? "";
 
   const [q, setQ] = useState(currentQ);
@@ -43,6 +45,7 @@ export function AccountsFilters() {
       const next = new URLSearchParams(params.toString());
       if (q.trim()) next.set("q", q.trim());
       else next.delete("q");
+      next.delete("page");
       const qs = next.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     }, 250);
@@ -64,20 +67,20 @@ export function AccountsFilters() {
       />
 
       <ChipRow label="Tier">
-        <Chip href={buildHref(pathname, params, { tier: null })} active={!currentTier}>
+        <Chip href={buildHref(pathname, params, { tier: null, page: null })} active={!currentTier}>
           All
         </Chip>
         {TIERS.map((t) => (
           <Chip
             key={t}
-            href={buildHref(pathname, params, { tier: t })}
+            href={buildHref(pathname, params, { tier: t, page: null })}
             active={currentTier === t}
           >
             Tier {t}
           </Chip>
         ))}
         <Chip
-          href={buildHref(pathname, params, { tier: "unscored" })}
+          href={buildHref(pathname, params, { tier: "unscored", page: null })}
           active={currentTier === "unscored"}
         >
           Unscored
@@ -85,13 +88,13 @@ export function AccountsFilters() {
       </ChipRow>
 
       <ChipRow label="Stage">
-        <Chip href={buildHref(pathname, params, { stage: null })} active={!currentStage}>
+        <Chip href={buildHref(pathname, params, { stage: null, page: null })} active={!currentStage}>
           All
         </Chip>
         {STAGES.map((s) => (
           <Chip
             key={s}
-            href={buildHref(pathname, params, { stage: s })}
+            href={buildHref(pathname, params, { stage: s, page: null })}
             active={currentStage === s}
           >
             {STAGE_LABELS[s]}
@@ -103,6 +106,7 @@ export function AccountsFilters() {
         <Chip
           href={buildHref(pathname, params, {
             needs_review: needsReview ? null : "1",
+            page: null,
           })}
           active={needsReview}
         >
@@ -111,6 +115,8 @@ export function AccountsFilters() {
         <Chip
           href={buildHref(pathname, params, {
             has_followup: hasFollowup ? null : "1",
+            followup: null,
+            page: null,
           })}
           active={hasFollowup}
         >
@@ -118,11 +124,41 @@ export function AccountsFilters() {
         </Chip>
         <Chip
           href={buildHref(pathname, params, {
+            followup: currentFollowup === "due" ? null : "due",
+            has_followup: null,
+            page: null,
+          })}
+          active={currentFollowup === "due"}
+        >
+          Follow-up due
+        </Chip>
+        <Chip
+          href={buildHref(pathname, params, {
+            followup: currentFollowup === "scheduled" ? null : "scheduled",
+            has_followup: null,
+            page: null,
+          })}
+          active={currentFollowup === "scheduled"}
+        >
+          Scheduled follow-up
+        </Chip>
+        <Chip
+          href={buildHref(pathname, params, {
             touched: touched ? null : "1",
+            page: null,
           })}
           active={touched}
         >
-          Touched this week
+          Touched last 7 days
+        </Chip>
+        <Chip
+          href={buildHref(pathname, params, {
+            stale: stale ? null : "1",
+            page: null,
+          })}
+          active={stale}
+        >
+          Stale Tier 1/2
         </Chip>
       </ChipRow>
     </div>
@@ -157,6 +193,7 @@ function Chip({
     <Link
       href={href}
       scroll={false}
+      aria-current={active ? "true" : undefined}
       className={`chip ${active ? "chip-active" : ""}`}
     >
       {children}

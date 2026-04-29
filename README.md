@@ -2,6 +2,8 @@
 
 A local, single-user tool that replaces the target-account spreadsheet an SDR already keeps on the side, and adds structured interaction history, follow-ups, and AI scoring with evidence.
 
+Screenshots and demo rows are synthetic and stored locally in this repo. They are meant to show the workflow, not customer data.
+
 ![The morning view — overdue follow-ups, today's queue, stats, and the target-account table.](screenshots/01-dashboard.png)
 
 ## What's in it
@@ -12,7 +14,7 @@ A local, single-user tool that replaces the target-account spreadsheet an SDR al
 
 **Follow-ups with reasons.** A follow-up date without context rots. Every follow-up carries a `reason` field ("they said call after Q1 earnings") plus a snooze. The dashboard surfaces overdue, today, and the next seven days so nothing quietly slips.
 
-**AI scoring with evidence.** When you ask the AI to score an account, it returns a tier plus the evidence it found: funding details with a source URL, countries the company is in, hiring signals, and a confidence level. You can read the work before you trust it. If you override the tier, the override is sticky, and re-scoring will not overwrite it.
+**AI scoring with evidence.** Choose OpenAI or Anthropic in Settings. When you ask the AI to score an account, it returns a tier plus the evidence it found: funding details with source objects, countries the company is in, hiring signals, and a confidence level. You can read the work before you trust it. If you override the tier, the override is sticky, and re-scoring will not overwrite it.
 
 Call prep is also in the app and uses your own notes rather than the open web. Details in [ABOUT.md](ABOUT.md).
 
@@ -21,8 +23,8 @@ Call prep is also in the app and uses your own notes rather than the open web. D
 - No team features, sharing, or multi-user mode.
 - No Salesforce, HubSpot, Gmail, or Outlook integration. No email sending, no sequencing.
 - No contact data provider. It won't find new accounts or enrich contacts for you.
-- No mobile UI. Works in a desktop browser.
-- Dedup on import is exact-name only. "Acme Inc" and "Acme Incorporated" become two rows.
+- No mobile-native app. Narrow browser widths are usable, but the workflow is designed for a desktop browser.
+- Import warns on obvious duplicate names and domains, but it is not a full data-cleaning system.
 - Keyboard shortcuts are not wired up yet, even if earlier notes implied otherwise.
 - It's beta software. Expect rough edges.
 
@@ -54,17 +56,43 @@ Head to [QUICKSTART.md](QUICKSTART.md) for prerequisites and a guided first hour
 
 ![Call prep output on a sparse account — the opener reads "Hi [Name]" and one qualifying question is annotated "(generic — thin notes)".](screenshots/06-call-prep-thin-notes.png)
 
-**Import preview.** Drag a CSV, see which canonical fields were auto-mapped, which source columns are ignored, and which fields weren't found — then click Import.
+**Import preview.** Drag a CSV, see which canonical fields were auto-mapped, which source columns are preserved as imported fields, and which fields weren't found — then click Import.
 
-![Import preview — canonical fields name, website, industry, location auto-mapped from source columns; headcount shown as "(not found)"; one source column ignored (Founder); sample-rows table with seven accounts.](screenshots/07-import-preview.png)
+![Import preview — canonical fields name, website, industry, location auto-mapped from source columns; headcount shown as "(not found)"; an extra source column preserved as an imported field; sample-rows table with seven synthetic accounts.](screenshots/07-import-preview.png)
 
-**Settings.** Workspace name, company description, and tier definitions — this is what the AI scorer reads before it scores anything.
+**Settings.** Workspace name, company description, tier definitions, AI provider, and model — this is what the AI scorer reads before it scores anything.
 
-![Settings page — filled-in workspace name, company description, Tier 1 and Tier 2 definitions, AI model selector, and a masked Anthropic API key field loaded from .env.](screenshots/08-settings.png)
+![Settings page — filled-in workspace name, company description, Tier 1 and Tier 2 definitions, AI provider/model selector, and provider-specific API key status loaded from .env.](screenshots/08-settings.png)
 
 ## Why I built this
 
 The short version: the spreadsheet solves real problems the CRM doesn't, and kept pulling me back even when I tried to quit it. The long version is in [ABOUT.md](ABOUT.md).
+
+![Synthetic source spreadsheet — the kind of shadow account tracker the app is designed to replace, with account names, tiers, evidence columns, and notes.](screenshots/09-source-spreadsheet.png)
+
+## Why this matters for OpenAI SDR work
+
+This is an SDR workflow judgment case study, not just a local CRUD app. The buyer pain is familiar: the CRM is the system of record, but the SDR still keeps a private spreadsheet because prioritization, account context, and call prep are too slow or too generic in the official tooling.
+
+**Target user.** A single SDR managing 50 to 500 named accounts who needs better daily prioritization without adopting a heavy sequencer or handing private notes to another SaaS product.
+
+**Discovery questions.**
+
+- What account signals make you open the spreadsheet instead of the CRM?
+- Which tier decisions do you trust AI to propose, and which ones need human verification?
+- What proof do you need before acting on an AI-generated score?
+- Which manual steps are useful judgment, and which are repeatable admin work?
+
+**Likely objections.**
+
+- "Will this overwrite my judgment?" No. Human tier overrides are sticky.
+- "Where does my data go?" Account data stays in local SQLite; API keys stay in `.env`.
+- "Can I inspect the AI work?" Yes. Scores show evidence, confidence, gaps, and stale-state indicators.
+- "Is this trying to replace Salesforce?" No. It replaces the shadow spreadsheet around Salesforce.
+
+**Short demo script.** Import a synthetic spreadsheet, open the morning queue, score one account with the selected AI provider, verify the evidence, override the tier with chips, log an interaction, set a follow-up, and generate call prep from local context.
+
+The OpenAI-relevant lesson is the product boundary: use AI for evidence-backed suggestions and practical automation, keep the user in control, make uncertainty visible, and avoid pretending a model should own the sales process.
 
 ## Feedback I'd like:
 
@@ -79,7 +107,7 @@ One-line answers to all four beats a long essay on one.
 
 - Don't import customer or prospect data you don't have permission to hold if on your personal machine. Check with your employer if unsure.
 - Don't redistribute the app or the source code to anyone outside the beta.
-- All data is stored locally. You are responsible for the security of your machine and your backups.
+- All data is stored locally. Use JSON export as the normal backup path. For a raw SQLite backup, stop the app and copy `data/workspace.db`, `data/workspace.db-wal`, and `data/workspace.db-shm` together when the WAL files are present.
 
 ## Contact
 

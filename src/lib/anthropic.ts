@@ -11,6 +11,8 @@ export function hasApiKey(): boolean {
   return !!process.env.ANTHROPIC_API_KEY?.trim();
 }
 
+export const hasAnthropicApiKey = hasApiKey;
+
 let cached: Anthropic | null = null;
 
 export function getClient(): Anthropic {

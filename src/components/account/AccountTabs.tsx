@@ -26,7 +26,10 @@ export function AccountTabs({
 }) {
   return (
     <div className="border-b border-neutral-200">
-      <nav className="flex gap-1">
+      <nav
+        aria-label="Account sections"
+        className="flex min-h-11 gap-1 overflow-x-auto"
+      >
         {TABS.map((tab) => {
           const isActive = tab.id === active;
           const href = tab.id === "details" ? basePath : `${basePath}?tab=${tab.id}`;
@@ -37,8 +40,9 @@ export function AccountTabs({
               href={href}
               replace
               scroll={false}
+              aria-current={isActive ? "page" : undefined}
               className={
-                "inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm " +
+                "inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm " +
                 (isActive
                   ? "border-blue-600 font-medium text-blue-700"
                   : "border-transparent text-neutral-600 hover:text-neutral-900")

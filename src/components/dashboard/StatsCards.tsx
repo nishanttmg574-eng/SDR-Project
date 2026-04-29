@@ -3,36 +3,55 @@ import { getDashboardStats } from "@/lib/stats";
 
 export function StatsCards() {
   const stats = getDashboardStats();
-  const needsReviewAlert = stats.needsReview > 0;
+  const overdueAlert = stats.followupsOverdue > 0;
+  const staleAlert = stats.staleTier1And2Accounts > 0;
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <Card href="/" label="Total accounts" value={stats.total} />
-      <Card
-        href="/?has_followup=1"
-        label="Follow-ups due"
-        value={stats.followupsDue}
-        sub={
-          stats.followupsOverdue > 0
-            ? { text: `${stats.followupsOverdue} overdue`, color: "text-red-600" }
-            : null
-        }
-      />
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
       <Card
         href="/?touched=1"
-        label="Touched this week"
-        value={stats.touchedThisWeek}
+        label="Touches logged"
+        value={stats.touchesLoggedLast7Days}
         sub={{ text: "Last 7 days", color: "text-neutral-500" }}
       />
       <Card
-        href="/?needs_review=1"
-        label="Needs review"
-        value={stats.needsReview}
-        alert={needsReviewAlert}
+        href="/?touched=1"
+        label="Accounts touched"
+        value={stats.uniqueAccountsTouchedLast7Days}
+        sub={{ text: "Unique accounts", color: "text-neutral-500" }}
+      />
+      <Card
+        href="/?touched=1"
+        label="Connects/replies"
+        value={stats.connectsAndRepliesLast7Days}
+        sub={{ text: "Last 7 days", color: "text-neutral-500" }}
+      />
+      <Card
+        href="/?stage=meeting"
+        label="Meetings booked"
+        value={stats.meetingsBookedLast7Days}
+        sub={{ text: "Last 7 days", color: "text-neutral-500" }}
+      />
+      <Card
+        href="/?followup=due"
+        label="Overdue follow-ups"
+        value={stats.followupsOverdue}
+        alert={overdueAlert}
         sub={
-          needsReviewAlert
-            ? { text: "Low confidence · no override", color: "text-amber-700" }
-            : { text: "All good", color: "text-neutral-500" }
+          overdueAlert
+            ? { text: `${stats.followupsDue} due today or earlier`, color: "text-red-700" }
+            : { text: "Clear", color: "text-neutral-500" }
+        }
+      />
+      <Card
+        href="/?stale=1"
+        label="Stale Tier 1/2"
+        value={stats.staleTier1And2Accounts}
+        alert={staleAlert}
+        sub={
+          staleAlert
+            ? { text: "Working/follow-up", color: "text-amber-700" }
+            : { text: "Fresh", color: "text-neutral-500" }
         }
       />
     </div>

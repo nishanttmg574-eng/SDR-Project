@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { getAccount } from "@/lib/accounts";
 import { listInteractions } from "@/lib/interactions";
 import { listProspects } from "@/lib/prospects";
-import { hasApiKey } from "@/lib/anthropic";
+import { getAiReadiness } from "@/lib/ai-providers";
+import { isCallPrepStale } from "@/lib/ai-metadata";
+import { getSettings } from "@/lib/settings";
 import { AccountTabs, type Tab } from "@/components/account/AccountTabs";
 import { DetailsPanel } from "@/components/account/DetailsPanel";
 import { InteractionsPanel } from "@/components/account/InteractionsPanel";
@@ -43,17 +45,23 @@ export default async function AccountDetailPage({
 
   const interactions = listInteractions(account.id);
   const prospects = listProspects(account.id);
+  const settings = getSettings();
+  const aiReadiness = getAiReadiness(settings);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div className="flex items-baseline justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between">
+        <div className="min-w-0">
           <Link href="/" className="text-sm text-blue-600 hover:underline">
             ← Accounts
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold">{account.name}</h1>
+          <h1 className="mt-2 truncate text-2xl font-semibold" title={account.name}>
+            {account.name}
+          </h1>
         </div>
-        <DeleteAccountButton id={account.id} name={account.name} />
+        <div className="shrink-0">
+          <DeleteAccountButton id={account.id} name={account.name} />
+        </div>
       </div>
 
       <AccountTabs
@@ -82,7 +90,11 @@ export default async function AccountDetailPage({
           <ProspectsPanel accountId={account.id} prospects={prospects} />
         ) : null}
         {activeTab === "callprep" ? (
-          <CallPrepPanel account={account} apiKeyConfigured={hasApiKey()} />
+          <CallPrepPanel
+            account={account}
+            aiReadiness={aiReadiness}
+            stale={isCallPrepStale(account, settings, interactions, prospects)}
+          />
         ) : null}
         {activeTab === "followup" ? <FollowupPanel account={account} /> : null}
       </div>

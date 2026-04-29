@@ -8,6 +8,7 @@ export interface ParsedRow {
   industry?: string;
   location?: string;
   headcount?: string;
+  customFields?: Record<string, string>;
 }
 
 export const HEADER_SYNONYMS: Record<CanonicalField, string[]> = {
@@ -91,6 +92,7 @@ export function normalizeRows(
   mapping: ColumnMapping
 ): ParsedRow[] {
   const out: ParsedRow[] = [];
+  const mappedHeaders = new Set(Object.values(mapping).filter(Boolean));
   for (const raw of rawRows) {
     const name = mapping.name ? cellToString(raw[mapping.name]) : "";
     if (!name) continue;
@@ -110,6 +112,15 @@ export function normalizeRows(
     if (mapping.headcount) {
       const v = cellToString(raw[mapping.headcount]);
       if (v) row.headcount = v;
+    }
+    const customFields: Record<string, string> = {};
+    for (const [header, value] of Object.entries(raw)) {
+      if (mappedHeaders.has(header)) continue;
+      const v = cellToString(value);
+      if (v) customFields[header] = v;
+    }
+    if (Object.keys(customFields).length > 0) {
+      row.customFields = customFields;
     }
     out.push(row);
   }

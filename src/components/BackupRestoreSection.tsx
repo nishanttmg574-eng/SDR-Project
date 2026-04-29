@@ -81,7 +81,11 @@ export function BackupRestoreSection() {
         Export a full JSON snapshot of your workspace, or restore from one.
       </p>
 
-      <div className="mt-4 flex flex-wrap gap-3">
+      <div
+        className="mt-4 flex flex-wrap gap-3"
+        aria-live="polite"
+        aria-busy={status.kind === "restoring"}
+      >
         <a href="/api/backup" className="btn-secondary" download>
           Export backup
         </a>
@@ -103,14 +107,20 @@ export function BackupRestoreSection() {
       </div>
 
       {status.kind === "success" && (
-        <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+        <div
+          aria-live="polite"
+          className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900"
+        >
           Restored: {status.counts.accounts} accounts, {status.counts.interactions} interactions,{" "}
           {status.counts.prospects} prospects.
         </div>
       )}
 
       {status.kind === "error" && (
-        <div className="mt-4 whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+        <div
+          role="alert"
+          className="mt-4 whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900"
+        >
           {status.message}
         </div>
       )}

@@ -1,14 +1,26 @@
 import Link from "next/link";
-import { DEFAULT_MODEL } from "@/lib/config";
+import { providerDefaultModel, type AiProviderId } from "@/lib/config";
 import { getSettings, isConfigured } from "@/lib/settings";
 import { saveSettingsAction } from "@/lib/actions";
-import { hasApiKey } from "@/lib/anthropic";
+import { getAiReadiness } from "@/lib/ai-providers";
+import { AiSettingsFields } from "@/components/settings/AiSettingsFields";
 import { BackupRestoreSection } from "@/components/BackupRestoreSection";
 
 export default function SettingsPage() {
   const settings = getSettings();
   const firstRun = !isConfigured(settings);
-  const apiKeyConfigured = hasApiKey();
+  const readiness = {
+    openai: getAiReadiness({
+      ...settings,
+      aiProvider: "openai",
+      model: providerDefaultModel("openai"),
+    }),
+    anthropic: getAiReadiness({
+      ...settings,
+      aiProvider: "anthropic",
+      model: providerDefaultModel("anthropic"),
+    }),
+  } satisfies Record<AiProviderId, ReturnType<typeof getAiReadiness>>;
 
   return (
     <main className="mx-auto max-w-2xl p-8">
@@ -80,26 +92,15 @@ export default function SettingsPage() {
           />
         </Field>
 
-        <Field label="AI model" hint={`Default: ${DEFAULT_MODEL}`}>
-          <input name="model" defaultValue={settings.model} className="input" />
-        </Field>
-
         <Field
-          label="Anthropic API key"
-          hint={
-            apiKeyConfigured
-              ? "Loaded from ANTHROPIC_API_KEY in .env."
-              : "Not found in .env. Add ANTHROPIC_API_KEY to your .env file and restart."
-          }
+          label="AI provider and model"
+          hint="Scoring and call prep use the selected provider. API keys stay in .env."
         >
-          <div
-            className={`input flex items-center font-mono text-sm ${
-              apiKeyConfigured ? "text-neutral-700" : "text-red-700"
-            }`}
-            aria-readonly="true"
-          >
-            {apiKeyConfigured ? "••••••••" : "not set"}
-          </div>
+          <AiSettingsFields
+            provider={settings.aiProvider}
+            model={settings.model}
+            readiness={readiness}
+          />
         </Field>
 
         <div className="flex gap-3 pt-2">
